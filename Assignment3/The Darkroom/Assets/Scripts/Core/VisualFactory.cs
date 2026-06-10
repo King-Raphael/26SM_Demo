@@ -48,6 +48,7 @@ namespace Darkroom
 
         // Palette (spec section 9)
         public static readonly Color Background     = Hex(0x121212);
+        public static readonly Color BackgroundWarm = Hex(0x1A1414); // far-right "developing" tint
         public static readonly Color StaticGround   = Hex(0x6E6E6E);
         public static readonly Color DarkPath       = Hex(0x3A4A8C);
         public static readonly Color BrightBarrier  = Hex(0xEDEDED);

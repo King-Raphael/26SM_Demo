@@ -11,6 +11,9 @@ namespace Darkroom
         const float SmoothTime = 0.12f;
 
         Vector3 _vel;
+        Camera _cam;
+
+        void Awake() { _cam = GetComponent<Camera>(); }
 
         void LateUpdate()
         {
@@ -20,6 +23,12 @@ namespace Darkroom
             p.x = Mathf.Clamp(p.x, MinX, MaxX);
             p.y = Mathf.Clamp(p.y, MinY, MaxY);
             transform.position = p;
+
+            // the print "develops" toward a faint warm tint as x increases
+            if (_cam != null)
+                _cam.backgroundColor = Color.Lerp(
+                    VisualFactory.Background, VisualFactory.BackgroundWarm,
+                    Mathf.Clamp01((p.x - MinX) / (MaxX - MinX)));
         }
 
         public void Snap()
