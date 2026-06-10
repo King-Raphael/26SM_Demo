@@ -1,0 +1,140 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace Darkroom
+{
+    /// One long-exposure stroke: LineRenderer + EdgeCollider2D + ExposureObject.
+    /// Intangible while drawing (collider and ExposureObject disabled);
+    /// Fix() enables both and from then on solidity follows the matrix.
+    public class TrailStroke : MonoBehaviour
+    {
+        public const float Width = 0.14f;
+        public const float EdgeRadius = 0.07f;
+
+        public bool IsFixed { get; private set; }
+        public EdgeCollider2D Edge { get; private set; }
+
+        LineRenderer _lr;
+        ExposureObject _eo;
+        readonly List<Vector2> _pts = new List<Vector2>();
+        bool _despawning;
+
+        public static TrailStroke Create(ExposureObjectType type)
+        {
+            var go = new GameObject(type == ExposureObjectType.DarkStroke ? "DarkStroke" : "BrightStroke");
+            go.layer = Layers.Strokes;
+            go.SetActive(false); // defer Awake/OnEnable until configured
+
+            var lr = go.AddComponent<LineRenderer>();
+            lr.useWorldSpace = true;
+            lr.widthMultiplier = Width;
+            lr.sharedMaterial = VisualFactory.SpriteMat;
+            lr.sortingOrder = VisualFactory.OrderStroke;
+            lr.numCapVertices = 4;
+            lr.numCornerVertices = 2;
+            lr.positionCount = 0;
+            var c = VisualFactory.ColorFor(type);
+            lr.startColor = c;
+            lr.endColor = c;
+
+            var ec = go.AddComponent<EdgeCollider2D>();
+            ec.edgeRadius = EdgeRadius;
+            ec.enabled = false;
+
+            var eo = go.AddComponent<ExposureObject>();
+            eo.enabled = false; // not registered / matrix-driven until fixed
+            eo.type = type;
+
+            var ts = go.AddComponent<TrailStroke>();
+            ts._lr = lr;
+            ts.Edge = ec;
+            ts._eo = eo;
+            eo.BoundsProvider = ts.ComputeBounds;
+            eo.OverlapTester = ts.OverlapsBounds;
+
+            go.SetActive(true);
+            return ts;
+        }
+
+        public int PointCount => _pts.Count;
+
+        public void AddPoint(Vector2 p)
+        {
+            _pts.Add(p);
+            _lr.positionCount = _pts.Count;
+            _lr.SetPosition(_pts.Count - 1, p);
+        }
+
+        /// Returns false (caller should discard) if the stroke is too short to fix.
+        public bool Fix()
+        {
+            if (_pts.Count < 2) return false;
+            IsFixed = true;
+            Edge.points = _pts.ToArray(); // transform is identity: local == world
+            _eo.enabled = true;           // registers + applies the matrix now
+            return true;
+        }
+
+        public Bounds ComputeBounds()
+        {
+            if (_pts.Count == 0) return new Bounds(transform.position, Vector3.zero);
+            Vector2 min = _pts[0], max = _pts[0];
+            for (int i = 1; i < _pts.Count; i++)
+            {
+                min = Vector2.Min(min, _pts[i]);
+                max = Vector2.Max(max, _pts[i]);
+            }
+            var b = new Bounds();
+            b.SetMinMax(min, max);
+            b.Expand(EdgeRadius * 2f);
+            return b;
+        }
+
+        /// Per-segment overlap (jam check): the whole-stroke AABB of an arc
+        /// covers space the line never touches.
+        public bool OverlapsBounds(Bounds playerBounds)
+        {
+            if (_pts.Count == 1)
+            {
+                var b1 = new Bounds(_pts[0], Vector3.zero);
+                b1.Expand(EdgeRadius * 2f);
+                return b1.Intersects(playerBounds);
+            }
+            for (int i = 0; i < _pts.Count - 1; i++)
+            {
+                var b = new Bounds();
+                b.SetMinMax(Vector2.Min(_pts[i], _pts[i + 1]), Vector2.Max(_pts[i], _pts[i + 1]));
+                b.Expand(EdgeRadius * 2f);
+                if (b.Intersects(playerBounds)) return true;
+            }
+            return false;
+        }
+
+        /// Budget overflow: blink 0.5 s then despawn — deferred while stood on.
+        public void BeginDespawn(PlayerController player)
+        {
+            if (_despawning) return;
+            _despawning = true;
+            StartCoroutine(DespawnRoutine(player));
+        }
+
+        IEnumerator DespawnRoutine(PlayerController player)
+        {
+            float t = 0f;
+            while (t < 0.5f)
+            {
+                _lr.enabled = !_lr.enabled;
+                yield return new WaitForSeconds(0.08f);
+                t += 0.08f;
+            }
+            // keep blinking while the player is standing on it
+            while (player != null && player.IsStandingOn(Edge))
+            {
+                _lr.enabled = !_lr.enabled;
+                yield return new WaitForSeconds(0.08f);
+            }
+            Destroy(gameObject);
+        }
+    }
+}

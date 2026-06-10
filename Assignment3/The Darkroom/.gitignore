@@ -1,0 +1,14 @@
+# Unity generated folders (the repo-root .gitignore anchors these to the
+# repo root, which doesn't cover this nested project)
+/Library/
+/Temp/
+/Obj/
+/Build/
+/Builds/
+/Logs/
+/UserSettings/
+/MemoryCaptures/
+/Recordings/
+*.csproj
+*.sln
+.DS_Store
