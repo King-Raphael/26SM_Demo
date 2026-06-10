@@ -26,6 +26,7 @@ namespace Darkroom
         readonly List<TrailStroke> _despawning = new List<TrailStroke>();
         Vector2 _lastPoint;
         float _pathLen;
+        Color _activeColor;
 
         void Awake() { _player = GetComponent<PlayerController>(); }
 
@@ -77,9 +78,11 @@ namespace Darkroom
                 ? ExposureObjectType.DarkStroke
                 : ExposureObjectType.BrightStroke;
             _active = TrailStroke.Create(type);
+            _activeColor = VisualFactory.ColorFor(type);
             _lastPoint = DrawPos;
             _pathLen = 0f;
             _active.AddPoint(_lastPoint);
+            StrokeSparkle.Spawn(_lastPoint, _activeColor);
         }
 
         void Append()
@@ -90,6 +93,7 @@ namespace Darkroom
             _pathLen += d;
             _lastPoint = p;
             _active.AddPoint(p);
+            StrokeSparkle.Spawn(p, _activeColor);
             if (_pathLen >= MaxLength) FixActive();
         }
 

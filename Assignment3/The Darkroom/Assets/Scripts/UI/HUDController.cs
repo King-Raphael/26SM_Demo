@@ -14,6 +14,9 @@ namespace Darkroom
         public Transform CanvasRoot { get; private set; }
 
         Image _overlay, _whiteFlash, _blackFade;
+        RawImage _grain;
+        Texture2D[] _grainTex;
+        Text _timerText;
         RectTransform _strip;
         Vector2 _stripBasePos;
         readonly Image[] _frameBorders = new Image[3];
@@ -116,6 +119,18 @@ namespace Darkroom
             _overlay = NewImage("ExposureOverlay", CanvasRoot, OverlayNormal);
             Stretch(_overlay.rectTransform);
 
+            // faint film grain (stretch #3): flickering tiled noise
+            _grainTex = new Texture2D[3];
+            for (int g = 0; g < 3; g++) _grainTex[g] = MakeGrainTexture(g);
+            var grainRT = NewRect("FilmGrain", CanvasRoot);
+            Stretch(grainRT);
+            _grain = grainRT.gameObject.AddComponent<RawImage>();
+            _grain.texture = _grainTex[0];
+            _grain.color = new Color(1f, 1f, 1f, 0.05f);
+            _grain.raycastTarget = false;
+            _grain.uvRect = new Rect(0f, 0f, 15f, 8.44f);
+            StartCoroutine(GrainFlicker());
+
             // film strip
             _strip = NewRect("FilmStrip", CanvasRoot);
             Place(_strip, new Vector2(0f, 1f), new Vector2(24f, -24f), new Vector2(330f, 150f));
@@ -166,6 +181,10 @@ namespace Darkroom
             _checkpointText = NewText("CheckpointFlash", CanvasRoot, "", 22, new Color(0.81f, 0.81f, 0.81f, 1f), TextAnchor.MiddleCenter);
             Place(_checkpointText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 160f), new Vector2(800f, 40f));
 
+            // replay timer (stretch #5): hidden until the first win
+            _timerText = NewText("ReplayTimer", CanvasRoot, "", 24, new Color(0.73f, 0.73f, 0.73f, 1f), TextAnchor.MiddleRight);
+            Place(_timerText.rectTransform, new Vector2(1f, 1f), new Vector2(-24f, -24f), new Vector2(220f, 36f));
+
             // respawn fade + switch flash (topmost)
             _blackFade = NewImage("BlackFade", CanvasRoot, new Color(0f, 0f, 0f, 0f));
             Stretch(_blackFade.rectTransform);
@@ -174,6 +193,51 @@ namespace Darkroom
 
             ApplyLockVisual(false);
             HighlightFrame(Exposure.Normal);
+        }
+
+        Texture2D MakeGrainTexture(int seed)
+        {
+            var tex = new Texture2D(128, 128, TextureFormat.RGBA32, false);
+            tex.wrapMode = TextureWrapMode.Repeat;
+            tex.filterMode = FilterMode.Point;
+            var rng = new System.Random(7000 + seed);
+            var px = new Color32[128 * 128];
+            for (int i = 0; i < px.Length; i++)
+            {
+                // mostly transparent, a few bright specks
+                float a = Mathf.Pow((float)rng.NextDouble(), 7f);
+                px[i] = new Color32(255, 255, 255, (byte)(a * 255f));
+            }
+            tex.SetPixels32(px);
+            tex.Apply();
+            return tex;
+        }
+
+        IEnumerator GrainFlicker()
+        {
+            var wait = new WaitForSeconds(0.09f);
+            int i = 0;
+            while (true)
+            {
+                i = (i + 1) % _grainTex.Length;
+                _grain.texture = _grainTex[i];
+                _grain.uvRect = new Rect(Random.value, Random.value, 15f, 8.44f);
+                yield return wait;
+            }
+        }
+
+        void Update()
+        {
+            var gm = GameManager.Instance;
+            if (gm == null || _timerText == null) return;
+            if (gm.HasEverWon && !gm.HasWon) _timerText.text = FormatTime(gm.RunTime);
+            else if (!gm.HasEverWon) _timerText.text = "";
+        }
+
+        public static string FormatTime(float t)
+        {
+            int m = (int)(t / 60f);
+            return m + ":" + (t - m * 60f).ToString("00.0");
         }
 
         // ---------- exposure feedback ----------

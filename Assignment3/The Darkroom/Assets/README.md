@@ -68,7 +68,8 @@ Open the project in Unity 6000.4 LTS, open `Assets/Scenes/Level01.unity` (any sc
 - **The jam check tests strokes per segment**, not by whole-stroke AABB — an arc's bounding box covers space the line never touches and would refuse switches far away from the actual light. Stroke points are drawn 0.25 below the feet (more than the 0.07 edge radius) so a stroke drawn along the ground never protrudes above the floor, and a stroke drawn at the jump apex stays comfortably reachable by the next jump.
 - **The player's Rigidbody2D never sleeps** — sensors and standing-on-a-waking-enemy kills depend on `OnTriggerStay2D`, which Unity stops delivering for sleeping bodies.
 - **Full restart rebuilds the level in place** instead of reloading the scene (the bootstrap runs once per play session).
-- **No audio** — the jam "click" and switch "shutter" are visual-only (HUD shake + 1-frame flash). Audio is a stretch goal.
+- **Audio is procedurally synthesized** (no external assets): shutter click on every switch, low hum in Under, bright hiss in Over, dull jam click, pickup chime, win shutter (`AudioDirector`).
+- **All five spec stretch goals are implemented**: switch/state audio, sparkle particles along strokes while drawing, faint flickering film-grain overlay, statue "crackle" flicker when an enemy freezes, and a replay timer (hidden until the first win; final time shown on the win screen).
 - Hint text says "arrow keys" instead of arrow glyphs (font glyph safety).
 - Layers: 6=World, 7=Strokes, 8=Player, 9=Triggers; Strokes collides with Player only (set in code at boot).
 

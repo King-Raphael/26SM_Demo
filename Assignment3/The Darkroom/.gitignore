@@ -12,3 +12,4 @@
 *.csproj
 *.sln
 .DS_Store
+.idea/

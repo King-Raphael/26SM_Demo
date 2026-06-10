@@ -75,6 +75,15 @@ namespace Darkroom
                 40, new Color(0.96f, 0.94f, 0.90f, 1f), TextAnchor.MiddleCenter);
             text.lineSpacing = 1.4f;
             HUDController.Place(text.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1200f, 320f));
+
+            var gm = GameManager.Instance;
+            if (gm != null)
+            {
+                var time = HUDController.NewText("WinTime", transform,
+                    "TIME  " + HUDController.FormatTime(gm.RunTime),
+                    26, new Color(0.80f, 0.78f, 0.74f, 1f), TextAnchor.MiddleCenter);
+                HUDController.Place(time.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -210f), new Vector2(600f, 40f));
+            }
         }
 
         static void SetBar(RectTransform rt, Vector2 anchor, Vector2 size)

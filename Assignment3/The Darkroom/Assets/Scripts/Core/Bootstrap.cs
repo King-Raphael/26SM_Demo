@@ -25,6 +25,7 @@ namespace Darkroom
             var managers = new GameObject("_Managers");
             var gm = managers.AddComponent<GameManager>();
             managers.AddComponent<ExposureManager>();
+            managers.AddComponent<AudioDirector>();
 
             HUDController.Build();
             LevelBuilder.Build(BuildThroughRoomCount);
@@ -50,6 +51,9 @@ namespace Darkroom
             cam.orthographicSize = 5.5f;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = VisualFactory.Background;
+
+            if (Object.FindAnyObjectByType<AudioListener>() == null)
+                cam.gameObject.AddComponent<AudioListener>();
 
             var follow = cam.GetComponent<CameraFollow>();
             if (follow == null) follow = cam.gameObject.AddComponent<CameraFollow>();

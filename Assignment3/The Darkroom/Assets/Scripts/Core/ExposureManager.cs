@@ -84,6 +84,7 @@ namespace Darkroom
         void Jam()
         {
             if (HUDController.Instance != null) HUDController.Instance.JamFeedback();
+            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayJam();
         }
     }
 }

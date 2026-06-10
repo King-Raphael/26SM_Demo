@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 namespace Darkroom
@@ -16,6 +17,7 @@ namespace Darkroom
         Rigidbody2D _rb;
         Collider2D _col;
         SpriteRenderer _sr;
+        Coroutine _crackle;
 
         public void Init(float patrolRange, float patrolSpeed)
         {
@@ -47,10 +49,29 @@ namespace Darkroom
 
         void ApplyState(Exposure e)
         {
+            bool wasAwake = _isAwake;
             _isAwake = e == Exposure.Overexposed;
             _col.isTrigger = _isAwake;
             gameObject.layer = _isAwake ? Layers.Triggers : Layers.World;
             _sr.color = _isAwake ? VisualFactory.EnemyAwake : VisualFactory.EnemyAsleep;
+
+            if (_crackle != null) { StopCoroutine(_crackle); _crackle = null; }
+            // statue "crackle" on freeze (spec stretch #4)
+            if (wasAwake && !_isAwake && gameObject.activeInHierarchy)
+                _crackle = StartCoroutine(Crackle());
+        }
+
+        IEnumerator Crackle()
+        {
+            var hi = new Color(0.42f, 0.42f, 0.42f, 1f);
+            for (int i = 0; i < 3; i++)
+            {
+                _sr.color = hi;
+                yield return new WaitForSeconds(0.05f);
+                _sr.color = VisualFactory.EnemyAsleep;
+                yield return new WaitForSeconds(0.05f);
+            }
+            _crackle = null;
         }
 
         void FixedUpdate()

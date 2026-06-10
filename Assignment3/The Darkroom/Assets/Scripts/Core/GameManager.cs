@@ -13,6 +13,9 @@ namespace Darkroom
         public bool HasShutter { get; private set; }
         public bool IsRespawning { get; private set; }
         public bool HasWon { get; private set; }
+        /// Set on the first win; survives FullRestart. Unlocks the replay timer HUD.
+        public bool HasEverWon { get; private set; }
+        public float RunTime { get; private set; }
         public Vector2 CheckpointPos { get; private set; }
         public PlayerController Player { get; set; }
 
@@ -26,6 +29,7 @@ namespace Darkroom
         void Update()
         {
             if (Player == null) return;
+            if (!HasWon) RunTime += Time.deltaTime;
 
             if (HasWon)
             {
@@ -58,6 +62,7 @@ namespace Darkroom
         {
             if (a == Ability.Flash) HasFlash = true; else HasShutter = true;
             if (HUDController.Instance != null) HUDController.Instance.OnAbilityUnlocked(a);
+            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayPickup();
         }
 
         /// Respawn at the checkpoint: <=0.3 s fade, exposure reset to Normal, strokes cleared.
@@ -85,8 +90,10 @@ namespace Darkroom
         {
             if (HasWon || IsRespawning) return;
             HasWon = true;
+            HasEverWon = true;
             Player.InputEnabled = false;
             Player.Body.linearVelocity = Vector2.zero;
+            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayWin();
             WinScreen.Show();
         }
 
@@ -99,6 +106,7 @@ namespace Darkroom
             HasWon = false;
             HasFlash = false;
             HasShutter = false;
+            RunTime = 0f;
             OnRespawn?.Invoke();
             var old = GameObject.Find("_Level");
             if (old != null) Destroy(old);
