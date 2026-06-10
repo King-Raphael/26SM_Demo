@@ -7,8 +7,8 @@ namespace Darkroom
     /// existence check (safe with domain reload disabled).
     public static class Bootstrap
     {
-        /// Demo milestone: rooms 0-2. Full game: 10.
-        public const int BuildThroughRoomCount = 2;
+        /// Full game: 10 (set to 2 for the rooms 0-2 demo build).
+        public const int BuildThroughRoomCount = 10;
 
         public static readonly Vector2 SpawnPos = new Vector2(-3f, 1.5f);
 
