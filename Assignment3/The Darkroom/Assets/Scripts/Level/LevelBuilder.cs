@@ -64,15 +64,26 @@ namespace Darkroom
 
         public static GameObject Box(string name, ExposureObjectType t, Vector2 c, Vector2 s)
         {
-            var go = NewSpriteBox(name, c, s, VisualFactory.ColorFor(t), VisualFactory.OrderFor(t), Layers.World);
+            var go = NewTiledBox(name, c, s, TileFor(t), VisualFactory.OrderFor(t), Layers.World);
             var bc = go.AddComponent<BoxCollider2D>();
-            bc.size = Vector2.one;
+            bc.size = s;
             if (t != ExposureObjectType.StaticGround)
             {
                 var eo = go.AddComponent<ExposureObject>();
                 eo.type = t;
+                eo.boxSize = s;
             }
             return go;
+        }
+
+        static Sprite TileFor(ExposureObjectType t)
+        {
+            switch (t)
+            {
+                case ExposureObjectType.DarkPath:      return PixelArt.DarkPathTile;
+                case ExposureObjectType.BrightBarrier: return PixelArt.BarrierTile;
+                default:                               return PixelArt.GroundTile;
+            }
         }
 
         public static GameObject Static(string name, Vector2 c, Vector2 s)
@@ -80,9 +91,20 @@ namespace Darkroom
 
         public static GameObject Enemy(string name, Vector2 c, float patrolRange, float speed)
         {
-            var go = NewSpriteBox(name, c, new Vector2(0.8f, 0.8f), VisualFactory.EnemyAsleep, VisualFactory.OrderEnemy, Layers.World);
+            var go = new GameObject(name);
+            go.layer = Layers.World;
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(c.x, c.y, 0f);
+
+            var visual = new GameObject("Visual");
+            visual.transform.SetParent(go.transform, false);
+            var sr = visual.AddComponent<SpriteRenderer>();
+            sr.sprite = LightSensitiveEnemy.AsleepSprite;
+            sr.sharedMaterial = VisualFactory.SpriteMat;
+            sr.sortingOrder = VisualFactory.OrderEnemy;
+
             var bc = go.AddComponent<BoxCollider2D>();
-            bc.size = Vector2.one;
+            bc.size = new Vector2(0.8f, 0.8f);
             var rb = go.AddComponent<Rigidbody2D>();
             rb.bodyType = RigidbodyType2D.Kinematic;
             var en = go.AddComponent<LightSensitiveEnemy>();
@@ -116,18 +138,24 @@ namespace Darkroom
 
         public static SensorDoor Door(string id, Vector2 c, Vector2 s)
         {
-            var go = NewSpriteBox(id, c, s, VisualFactory.DoorClosed, VisualFactory.OrderDoor, Layers.World);
+            var go = NewTiledBox(id, c, s, PixelArt.DoorTile, VisualFactory.OrderDoor, Layers.World);
             var bc = go.AddComponent<BoxCollider2D>();
-            bc.size = Vector2.one;
+            bc.size = s;
             return go.AddComponent<SensorDoor>();
         }
 
         public static GameObject Pickup(Ability a, Vector2 c)
         {
-            var go = NewSpriteBox(a == Ability.Flash ? "Pickup_Flash" : "Pickup_Shutter",
-                c, new Vector2(0.5f, 0.5f), VisualFactory.PickupColor, VisualFactory.OrderPickup, Layers.Triggers);
+            var go = new GameObject(a == Ability.Flash ? "Pickup_Flash" : "Pickup_Shutter");
+            go.layer = Layers.Triggers;
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(c.x, c.y, 0f);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = a == Ability.Flash ? PixelArt.FlashPickup : PixelArt.ShutterPickup;
+            sr.sharedMaterial = VisualFactory.SpriteMat;
+            sr.sortingOrder = VisualFactory.OrderPickup;
             var bc = go.AddComponent<BoxCollider2D>();
-            bc.size = Vector2.one; // 0.5 x 0.5 world, per spec
+            bc.size = new Vector2(0.5f, 0.5f); // per spec
             bc.isTrigger = true;
             var pk = go.AddComponent<AbilityPickup>();
             pk.ability = a;
@@ -151,15 +179,40 @@ namespace Darkroom
 
         public static GameObject Exit(Vector2 c, Vector2 s)
         {
-            var go = NewSpriteBox("LevelExit", c, s, VisualFactory.ExitRed, VisualFactory.OrderExit, Layers.Triggers);
+            var go = new GameObject("LevelExit");
+            go.layer = Layers.Triggers;
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(c.x, c.y, 0f);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = PixelArt.ExitDoor;
+            sr.sharedMaterial = VisualFactory.SpriteMat;
+            sr.sortingOrder = VisualFactory.OrderExit;
             var bc = go.AddComponent<BoxCollider2D>();
-            bc.size = Vector2.one;
+            bc.size = s;
             bc.isTrigger = true;
             go.AddComponent<LevelExit>();
             return go;
         }
 
         // ---------- primitives ----------
+
+        /// Tiled draw mode keeps texture density uniform regardless of box size
+        /// (localScale stays 1, so colliders are sized directly).
+        static GameObject NewTiledBox(string name, Vector2 c, Vector2 s, Sprite tile, int order, int layer)
+        {
+            var go = new GameObject(name);
+            go.layer = layer;
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(c.x, c.y, 0f);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = tile;
+            sr.sharedMaterial = VisualFactory.SpriteMat;
+            sr.drawMode = SpriteDrawMode.Tiled;
+            sr.size = s;
+            sr.color = Color.white;
+            sr.sortingOrder = order;
+            return go;
+        }
 
         static GameObject NewSpriteBox(string name, Vector2 c, Vector2 s, Color color, int order, int layer)
         {

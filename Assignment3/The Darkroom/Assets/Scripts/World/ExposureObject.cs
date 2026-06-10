@@ -12,6 +12,9 @@ namespace Darkroom
     public class ExposureObject : MonoBehaviour
     {
         public ExposureObjectType type;
+        /// World-space size for boxes (tiled sprites keep localScale at 1,
+        /// so lossyScale no longer reflects the real footprint).
+        public Vector2 boxSize;
         /// Override for strokes (disabled colliders have invalid bounds).
         public Func<Bounds> BoundsProvider;
         /// Optional precise overlap test (strokes test per segment — a whole-
@@ -105,6 +108,8 @@ namespace Darkroom
         public Bounds GetWorldBounds()
         {
             if (BoundsProvider != null) return BoundsProvider();
+            if (boxSize.sqrMagnitude > 0f)
+                return new Bounds(transform.position, new Vector3(boxSize.x, boxSize.y, 0.1f));
             return new Bounds(transform.position, transform.lossyScale);
         }
 

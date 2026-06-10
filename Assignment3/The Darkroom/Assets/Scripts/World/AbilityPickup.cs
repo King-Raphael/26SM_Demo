@@ -25,8 +25,9 @@ namespace Darkroom
             var p = transform.position;
             p.y = _baseY + 0.2f * Mathf.Sin(Time.time * 2f);
             transform.position = p;
+            // tint over the baked pixel sprite: white -> faint safelight red
             float pulse = (Mathf.Sin(Time.time * 4f) + 1f) * 0.5f;
-            _sr.color = Color.Lerp(VisualFactory.PickupColor, VisualFactory.SafelightRed, pulse * 0.35f);
+            _sr.color = Color.Lerp(Color.white, VisualFactory.SafelightRed, pulse * 0.3f);
         }
 
         void OnTriggerEnter2D(Collider2D other)

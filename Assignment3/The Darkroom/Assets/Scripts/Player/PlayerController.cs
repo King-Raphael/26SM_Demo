@@ -28,13 +28,6 @@ namespace Darkroom
             var go = new GameObject("Player");
             go.layer = Layers.Player;
             go.transform.position = pos;
-            go.transform.localScale = new Vector3(0.7f, 1.3f, 1f);
-
-            var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = VisualFactory.WhiteSprite;
-            sr.sharedMaterial = VisualFactory.SpriteMat;
-            sr.color = VisualFactory.PlayerColor;
-            sr.sortingOrder = VisualFactory.OrderPlayer;
 
             var rb = go.AddComponent<Rigidbody2D>();
             rb.gravityScale = 3.2f;
@@ -46,12 +39,13 @@ namespace Darkroom
             rb.sleepMode = RigidbodySleepMode2D.NeverSleep;
 
             var bc = go.AddComponent<BoxCollider2D>();
-            bc.size = Vector2.one;
+            bc.size = new Vector2(0.7f, 1.3f);
             var mat = new PhysicsMaterial2D("PlayerFrictionless") { friction = 0f, bounciness = 0f };
             bc.sharedMaterial = mat;
 
             var pc = go.AddComponent<PlayerController>();
             go.AddComponent<TrailSystem>();
+            PlayerAnimator.Attach(pc);
             return pc;
         }
 
