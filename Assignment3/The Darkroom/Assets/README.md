@@ -65,7 +65,7 @@ Open the project in Unity 6000.4 LTS, open `Assets/Scenes/Level01.unity` (any sc
 - **Everything is runtime-generated** (`Bootstrap` → `LevelBuilder` + code-built UGUI HUD). `Level01.unity` is an empty template scene; the bootstrap also works from any other scene.
 - **Enemies are excluded from the jam check** — Room 7 requires freezing a statue while standing on it; physics depenetration handles the overlap.
 - **The live stroke uses a disabled collider** rather than `Physics2D.IgnoreCollision` (equivalent semantics, avoids the <2-point EdgeCollider2D edge case).
-- **The jam check tests strokes per segment**, not by whole-stroke AABB — an arc's bounding box covers space the line never touches and would refuse switches far away from the actual light. Stroke points are drawn 0.10 below the feet (more than the 0.07 edge radius) so a stroke drawn along the ground never protrudes above the floor.
+- **The jam check tests strokes per segment**, not by whole-stroke AABB — an arc's bounding box covers space the line never touches and would refuse switches far away from the actual light. Stroke points are drawn 0.25 below the feet (more than the 0.07 edge radius) so a stroke drawn along the ground never protrudes above the floor, and a stroke drawn at the jump apex stays comfortably reachable by the next jump.
 - **The player's Rigidbody2D never sleeps** — sensors and standing-on-a-waking-enemy kills depend on `OnTriggerStay2D`, which Unity stops delivering for sleeping bodies.
 - **Full restart rebuilds the level in place** instead of reloading the scene (the bootstrap runs once per play session).
 - **No audio** — the jam "click" and switch "shutter" are visual-only (HUD shake + 1-frame flash). Audio is a stretch goal.

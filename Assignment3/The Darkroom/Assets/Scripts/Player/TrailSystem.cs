@@ -15,7 +15,10 @@ namespace Darkroom
         // Below the feet by more than the edge radius (0.07), so a stroke
         // drawn along the ground never protrudes above the floor surface
         // (a protruding stroke would jam the switch back to its exposure).
-        public const float FeetOffset = 0.10f;
+        // 0.25 (not just 0.08) so a stroke drawn near the jump apex sits
+        // comfortably below the next jump's reach — without this margin the
+        // player can barely land on top of their own apex-height stroke.
+        public const float FeetOffset = 0.25f;
 
         PlayerController _player;
         TrailStroke _active;
