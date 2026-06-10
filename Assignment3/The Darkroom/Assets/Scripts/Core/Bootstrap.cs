@@ -28,6 +28,7 @@ namespace Darkroom
             managers.AddComponent<AudioDirector>();
 
             HUDController.Build();
+            BackdropBuilder.Build();
             LevelBuilder.Build(BuildThroughRoomCount);
 
             var player = PlayerController.Create(SpawnPos);

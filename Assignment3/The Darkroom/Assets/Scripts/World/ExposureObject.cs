@@ -20,6 +20,8 @@ namespace Darkroom
         /// Optional precise overlap test (strokes test per segment — a whole-
         /// stroke AABB would jam far away from the actual line).
         public Func<Bounds, bool> OverlapTester;
+        /// Mirrors every alpha change to attached visuals (glow halos).
+        public Action<float> OnAlphaApplied;
 
         const float SolidAlpha = 1f, FadedAlpha = 0.18f, GoneAlpha = 0f;
         const float FadeTime = 0.15f, GhostFadeTime = 0.3f;
@@ -164,6 +166,14 @@ namespace Darkroom
             c.a = a;
             if (_sr != null) _sr.color = c;
             if (_lr != null) { _lr.startColor = c; _lr.endColor = c; }
+            OnAlphaApplied?.Invoke(a);
+        }
+
+        /// Re-apply the current state (call after wiring OnAlphaApplied).
+        public void Reapply()
+        {
+            var mgr = ExposureManager.Instance;
+            ApplyImmediate(mgr != null ? mgr.Current : Exposure.Normal);
         }
     }
 }

@@ -72,8 +72,29 @@ namespace Darkroom
                 var eo = go.AddComponent<ExposureObject>();
                 eo.type = t;
                 eo.boxSize = s;
+                if (t == ExposureObjectType.DarkPath)
+                {
+                    var gsr = Halo(go.transform, new Vector2(s.x + 0.5f, s.y + 0.5f),
+                        new Color(0.36f, 0.46f, 0.78f, 0f), VisualFactory.OrderExposure - 1);
+                    eo.OnAlphaApplied = a => { var c2 = gsr.color; c2.a = a * 0.28f; gsr.color = c2; };
+                    eo.Reapply();
+                }
             }
             return go;
+        }
+
+        /// Soft additive-looking halo behind an object (just a faint quad).
+        static SpriteRenderer Halo(Transform parent, Vector2 size, Color color, int order)
+        {
+            var go = new GameObject("Glow");
+            go.transform.SetParent(parent, false);
+            go.transform.localScale = new Vector3(size.x, size.y, 1f);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = VisualFactory.WhiteSprite;
+            sr.sharedMaterial = VisualFactory.SpriteMat;
+            sr.color = color;
+            sr.sortingOrder = order;
+            return sr;
         }
 
         static Sprite TileFor(ExposureObjectType t)
@@ -159,12 +180,32 @@ namespace Darkroom
             bc.isTrigger = true;
             var pk = go.AddComponent<AbilityPickup>();
             pk.ability = a;
+
+            var halo = Halo(go.transform, new Vector2(1.1f, 1.1f),
+                new Color(1f, 0.95f, 0.84f, 0.12f), VisualFactory.OrderPickup - 1);
+            var pulse = go.AddComponent<GlowPulse>();
+            pulse.Target = halo;
+            pulse.Min = 0.07f;
+            pulse.Max = 0.16f;
+            pulse.Speed = 2.5f;
             return go;
         }
 
         public static GameObject CheckpointAt(string name, Vector2 c)
         {
             var go = NewTrigger(name, c, new Vector2(1f, 2f));
+
+            // small hanging-photo marker: dim until developed (grayscale only —
+            // safelight red is reserved)
+            var marker = new GameObject("Marker");
+            marker.transform.SetParent(go.transform, false);
+            marker.transform.localPosition = new Vector3(0f, 0.55f, 0f);
+            var sr = marker.AddComponent<SpriteRenderer>();
+            sr.sprite = PixelArt.CheckpointMarker;
+            sr.sharedMaterial = VisualFactory.SpriteMat;
+            sr.color = new Color(0.5f, 0.5f, 0.5f, 0.8f);
+            sr.sortingOrder = VisualFactory.OrderExposure - 2;
+
             go.AddComponent<Checkpoint>();
             return go;
         }
@@ -191,6 +232,15 @@ namespace Darkroom
             bc.size = s;
             bc.isTrigger = true;
             go.AddComponent<LevelExit>();
+
+            // pulsing safelight halo around the exit
+            var halo = Halo(go.transform, new Vector2(s.x + 1.4f, s.y + 1.0f),
+                new Color(0.545f, 0.10f, 0.10f, 0.15f), VisualFactory.OrderExit - 1);
+            var pulse = go.AddComponent<GlowPulse>();
+            pulse.Target = halo;
+            pulse.Min = 0.10f;
+            pulse.Max = 0.22f;
+            pulse.Speed = 1.6f;
             return go;
         }
 

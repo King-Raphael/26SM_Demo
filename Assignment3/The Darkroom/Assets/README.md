@@ -63,6 +63,7 @@ Open the project in Unity 6000.4 LTS, open `Assets/Scenes/Level01.unity` (any sc
 
 - **URP 2D** template instead of the spec's built-in pipeline (project ships with URP; sprites + LineRenderer behave identically with the shared unlit material).
 - **All art is procedural pixel art** (`PixelArt`): characters/pickups/exit are authored as in-code string maps, world surfaces are generated tile textures drawn in Tiled sprite mode — still zero external assets. The player has a 2-frame walk, jump pose, landing squash; enemies have closed/glowing eyes and a breathing idle while awake.
+- **Atmosphere layer**: two-speed parallax backdrop of darkroom silhouettes (hanging photo lines, shelves with bottles, enlargers — `BackdropBuilder`), glow halos on dark paths / strokes / pickups / the exit (alpha-synced to the exposure matrix), a radial vignette while Underexposed, dim hanging-photo checkpoint markers that brighten once "developed", and a fading title card at boot.
 - **Everything is runtime-generated** (`Bootstrap` → `LevelBuilder` + code-built UGUI HUD). `Level01.unity` is an empty template scene; the bootstrap also works from any other scene.
 - **Enemies are excluded from the jam check** — Room 7 requires freezing a statue while standing on it; physics depenetration handles the overlap.
 - **The live stroke uses a disabled collider** rather than `Physics2D.IgnoreCollision` (equivalent semantics, avoids the <2-point EdgeCollider2D edge case).

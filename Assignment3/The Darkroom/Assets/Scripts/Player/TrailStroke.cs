@@ -16,6 +16,7 @@ namespace Darkroom
         public EdgeCollider2D Edge { get; private set; }
 
         LineRenderer _lr;
+        LineRenderer _glow;
         ExposureObject _eo;
         readonly List<Vector2> _pts = new List<Vector2>();
         bool _despawning;
@@ -38,6 +39,22 @@ namespace Darkroom
             lr.startColor = c;
             lr.endColor = c;
 
+            // soft glow line behind the stroke
+            var glowGO = new GameObject("Glow");
+            glowGO.transform.SetParent(go.transform, false);
+            var glow = glowGO.AddComponent<LineRenderer>();
+            glow.useWorldSpace = true;
+            glow.widthMultiplier = Width * 2.8f;
+            glow.sharedMaterial = VisualFactory.SpriteMat;
+            glow.sortingOrder = VisualFactory.OrderStroke - 1;
+            glow.numCapVertices = 4;
+            glow.numCornerVertices = 2;
+            glow.positionCount = 0;
+            var gc = c;
+            gc.a = 0.30f; // visible while drawing; matrix-driven after fix
+            glow.startColor = gc;
+            glow.endColor = gc;
+
             var ec = go.AddComponent<EdgeCollider2D>();
             ec.edgeRadius = EdgeRadius;
             ec.enabled = false;
@@ -48,10 +65,18 @@ namespace Darkroom
 
             var ts = go.AddComponent<TrailStroke>();
             ts._lr = lr;
+            ts._glow = glow;
             ts.Edge = ec;
             ts._eo = eo;
             eo.BoundsProvider = ts.ComputeBounds;
             eo.OverlapTester = ts.OverlapsBounds;
+            eo.OnAlphaApplied = a =>
+            {
+                var g = glow.startColor;
+                g.a = a * 0.30f;
+                glow.startColor = g;
+                glow.endColor = g;
+            };
 
             go.SetActive(true);
             return ts;
@@ -64,6 +89,8 @@ namespace Darkroom
             _pts.Add(p);
             _lr.positionCount = _pts.Count;
             _lr.SetPosition(_pts.Count - 1, p);
+            _glow.positionCount = _pts.Count;
+            _glow.SetPosition(_pts.Count - 1, p);
         }
 
         /// Returns false (caller should discard) if the stroke is too short to fix.
@@ -125,6 +152,7 @@ namespace Darkroom
             while (t < 0.5f)
             {
                 _lr.enabled = !_lr.enabled;
+                _glow.enabled = _lr.enabled;
                 yield return new WaitForSeconds(0.08f);
                 t += 0.08f;
             }
@@ -132,6 +160,7 @@ namespace Darkroom
             while (player != null && player.IsStandingOn(Edge))
             {
                 _lr.enabled = !_lr.enabled;
+                _glow.enabled = _lr.enabled;
                 yield return new WaitForSeconds(0.08f);
             }
             Destroy(gameObject);

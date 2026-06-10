@@ -169,6 +169,32 @@ namespace Darkroom
             }
         }
 
+        static Sprite _cpMarker;
+
+        /// Small hanging photo: checkpoint marker (brightens when developed).
+        public static Sprite CheckpointMarker
+        {
+            get
+            {
+                if (_cpMarker == null)
+                    _cpMarker = FromMap("CheckpointMarker", new[]
+                    {
+                        "..CC..",
+                        "FFFFFF",
+                        "FPPPPF",
+                        "FPPPPF",
+                        "FPPPPF",
+                        "FPPPPF",
+                        "FFFFFF",
+                        "......",
+                    }, new Dictionary<char, Color32>
+                    {
+                        { 'C', C(0x6A6A6A) }, { 'F', C(0x585858) }, { 'P', C(0x3A3A3A) },
+                    }, 12f);
+                return _cpMarker;
+            }
+        }
+
         /// Safelight-red exit door: frame, window, handle.
         public static Sprite ExitDoor
         {

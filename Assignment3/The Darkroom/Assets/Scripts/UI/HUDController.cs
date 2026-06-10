@@ -14,7 +14,7 @@ namespace Darkroom
         public Transform CanvasRoot { get; private set; }
 
         Image _overlay, _whiteFlash, _blackFade;
-        RawImage _grain;
+        RawImage _grain, _vignette;
         Texture2D[] _grainTex;
         Text _timerText;
         RectTransform _strip;
@@ -131,6 +131,14 @@ namespace Darkroom
             _grain.uvRect = new Rect(0f, 0f, 15f, 8.44f);
             StartCoroutine(GrainFlicker());
 
+            // radial vignette, fades in while Underexposed
+            var vigRT = NewRect("Vignette", CanvasRoot);
+            Stretch(vigRT);
+            _vignette = vigRT.gameObject.AddComponent<RawImage>();
+            _vignette.texture = MakeVignetteTexture();
+            _vignette.color = new Color(1f, 1f, 1f, 0f);
+            _vignette.raycastTarget = false;
+
             // film strip
             _strip = NewRect("FilmStrip", CanvasRoot);
             Place(_strip, new Vector2(0f, 1f), new Vector2(24f, -24f), new Vector2(330f, 150f));
@@ -193,6 +201,51 @@ namespace Darkroom
 
             ApplyLockVisual(false);
             HighlightFrame(Exposure.Normal);
+            StartCoroutine(TitleCard());
+        }
+
+        IEnumerator TitleCard()
+        {
+            var title = NewText("Title", CanvasRoot, "THE DARKROOM", 72,
+                new Color(0.95f, 0.93f, 0.88f, 1f), TextAnchor.MiddleCenter);
+            Place(title.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 90f), new Vector2(1400f, 110f));
+            var sub = NewText("TitleSub", CanvasRoot, "develop the world — fix the light", 26,
+                new Color(0.62f, 0.62f, 0.60f, 1f), TextAnchor.MiddleCenter);
+            Place(sub.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 24f), new Vector2(1000f, 40f));
+
+            yield return new WaitForSeconds(2.0f);
+            float t = 0f;
+            while (t < 1.6f)
+            {
+                t += Time.deltaTime;
+                float a = Mathf.Lerp(1f, 0f, Mathf.Clamp01(t / 1.6f));
+                var c1 = title.color; c1.a = a; title.color = c1;
+                var c2 = sub.color; c2.a = a; sub.color = c2;
+                yield return null;
+            }
+            Destroy(title.gameObject);
+            Destroy(sub.gameObject);
+        }
+
+        Texture2D MakeVignetteTexture()
+        {
+            int n = 256;
+            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
+            tex.filterMode = FilterMode.Bilinear;
+            tex.wrapMode = TextureWrapMode.Clamp;
+            var px = new Color32[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float dx = (x - 127.5f) / 127.5f;
+                    float dy = (y - 127.5f) / 127.5f;
+                    float r = Mathf.Sqrt(dx * dx + dy * dy);
+                    float a = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((r - 0.5f) / 0.55f));
+                    px[y * n + x] = new Color32(0, 0, 0, (byte)(a * 255f));
+                }
+            tex.SetPixels32(px);
+            tex.Apply();
+            return tex;
         }
 
         Texture2D MakeGrainTexture(int seed)
@@ -247,8 +300,9 @@ namespace Darkroom
             HighlightFrame(e);
             Color target = e == Exposure.Underexposed ? OverlayUnder
                          : e == Exposure.Overexposed ? OverlayOver : OverlayNormal;
+            float vignette = e == Exposure.Underexposed ? 0.55f : 0f;
             if (_overlayCo != null) StopCoroutine(_overlayCo);
-            _overlayCo = StartCoroutine(LerpOverlay(target, 0.15f));
+            _overlayCo = StartCoroutine(LerpOverlay(target, vignette, 0.15f));
             if (_flashCo != null) StopCoroutine(_flashCo);
             _flashCo = StartCoroutine(OneFrameFlash());
         }
@@ -259,17 +313,21 @@ namespace Darkroom
                 _frameBorders[i].color = (int)e == i ? VisualFactory.SafelightRed : BorderDim;
         }
 
-        IEnumerator LerpOverlay(Color target, float dur)
+        IEnumerator LerpOverlay(Color target, float vignetteTarget, float dur)
         {
             Color start = _overlay.color;
+            float vStart = _vignette.color.a;
             float t = 0f;
             while (t < dur)
             {
                 t += Time.deltaTime;
-                _overlay.color = Color.Lerp(start, target, Mathf.Clamp01(t / dur));
+                float k = Mathf.Clamp01(t / dur);
+                _overlay.color = Color.Lerp(start, target, k);
+                _vignette.color = new Color(1f, 1f, 1f, Mathf.Lerp(vStart, vignetteTarget, k));
                 yield return null;
             }
             _overlay.color = target;
+            _vignette.color = new Color(1f, 1f, 1f, vignetteTarget);
         }
 
         IEnumerator OneFrameFlash()
@@ -435,6 +493,7 @@ namespace Darkroom
             SetStrokeDots(3);
             HighlightFrame(Exposure.Normal);
             _overlay.color = OverlayNormal;
+            _vignette.color = new Color(1f, 1f, 1f, 0f);
             _hintText.text = "";
             _bannerText.text = "";
             _checkpointText.text = "";
