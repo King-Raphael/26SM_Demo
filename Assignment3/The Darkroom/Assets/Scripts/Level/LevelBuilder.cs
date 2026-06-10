@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 
 namespace Darkroom
 {
@@ -74,9 +75,16 @@ namespace Darkroom
                 eo.boxSize = s;
                 if (t == ExposureObjectType.DarkPath)
                 {
+                    go.GetComponent<SpriteRenderer>().sharedMaterial = VisualFactory.GlowMat;
                     var gsr = Halo(go.transform, new Vector2(s.x + 0.5f, s.y + 0.5f),
                         new Color(0.36f, 0.46f, 0.78f, 0f), VisualFactory.OrderExposure - 1);
-                    eo.OnAlphaApplied = a => { var c2 = gsr.color; c2.a = a * 0.28f; gsr.color = c2; };
+                    var light = LightDirector.CreatePoint(go.transform, Vector2.zero,
+                        new Color(0.45f, 0.56f, 0.90f), Mathf.Max(s.x, s.y) * 0.5f + 1.6f, 0f);
+                    eo.OnAlphaApplied = a =>
+                    {
+                        var c2 = gsr.color; c2.a = a * 0.28f; gsr.color = c2;
+                        light.intensity = a * 0.55f;
+                    };
                     eo.Reapply();
                 }
             }
@@ -91,7 +99,7 @@ namespace Darkroom
             go.transform.localScale = new Vector3(size.x, size.y, 1f);
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = VisualFactory.WhiteSprite;
-            sr.sharedMaterial = VisualFactory.SpriteMat;
+            sr.sharedMaterial = VisualFactory.GlowMat;
             sr.color = color;
             sr.sortingOrder = order;
             return sr;
@@ -128,6 +136,12 @@ namespace Darkroom
             bc.size = new Vector2(0.8f, 0.8f);
             var rb = go.AddComponent<Rigidbody2D>();
             rb.bodyType = RigidbodyType2D.Kinematic;
+
+            // red glow while awake (toggled by the enemy)
+            var light = LightDirector.CreatePoint(go.transform, Vector2.zero,
+                new Color(0.75f, 0.15f, 0.15f), 2.4f, 0.5f);
+            light.enabled = false;
+
             var en = go.AddComponent<LightSensitiveEnemy>();
             en.Init(patrolRange, speed);
             return go;
@@ -154,6 +168,9 @@ namespace Darkroom
             var sensor = go.AddComponent<PhotoSensor>();
             sensor.Door = door;
             sensor.Init(go.GetComponent<SpriteRenderer>(), accent);
+            sensor.ActivateLight = LightDirector.CreatePoint(go.transform, Vector2.zero,
+                new Color(1f, 0.93f, 0.78f), 2.5f, 0.5f);
+            sensor.ActivateLight.enabled = false;
             return go;
         }
 
@@ -173,7 +190,7 @@ namespace Darkroom
             go.transform.position = new Vector3(c.x, c.y, 0f);
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = a == Ability.Flash ? PixelArt.FlashPickup : PixelArt.ShutterPickup;
-            sr.sharedMaterial = VisualFactory.SpriteMat;
+            sr.sharedMaterial = VisualFactory.GlowMat;
             sr.sortingOrder = VisualFactory.OrderPickup;
             var bc = go.AddComponent<BoxCollider2D>();
             bc.size = new Vector2(0.5f, 0.5f); // per spec
@@ -188,6 +205,10 @@ namespace Darkroom
             pulse.Min = 0.07f;
             pulse.Max = 0.16f;
             pulse.Speed = 2.5f;
+            pulse.Light = LightDirector.CreatePoint(go.transform, Vector2.zero,
+                new Color(1f, 0.93f, 0.78f), 2.2f, 0.4f);
+            pulse.LightMin = 0.30f;
+            pulse.LightMax = 0.55f;
             return go;
         }
 
@@ -202,7 +223,7 @@ namespace Darkroom
             marker.transform.localPosition = new Vector3(0f, 0.55f, 0f);
             var sr = marker.AddComponent<SpriteRenderer>();
             sr.sprite = PixelArt.CheckpointMarker;
-            sr.sharedMaterial = VisualFactory.SpriteMat;
+            sr.sharedMaterial = VisualFactory.GlowMat;
             sr.color = new Color(0.5f, 0.5f, 0.5f, 0.8f);
             sr.sortingOrder = VisualFactory.OrderExposure - 2;
 
@@ -241,6 +262,10 @@ namespace Darkroom
             pulse.Min = 0.10f;
             pulse.Max = 0.22f;
             pulse.Speed = 1.6f;
+            pulse.Light = LightDirector.CreatePoint(go.transform, Vector2.zero,
+                new Color(0.80f, 0.18f, 0.18f), 4.5f, 0.5f);
+            pulse.LightMin = 0.35f;
+            pulse.LightMax = 0.65f;
             return go;
         }
 

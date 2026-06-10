@@ -29,17 +29,36 @@ namespace Darkroom
             }
         }
 
+        /// Lit material: affected by the 2D lights (world geometry, actors).
         public static Material SpriteMat
         {
             get
             {
                 if (_mat == null)
                 {
-                    var sh = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default");
+                    var sh = Shader.Find("Universal Render Pipeline/2D/Sprite-Lit-Default");
                     if (sh == null) sh = Shader.Find("Sprites/Default");
-                    _mat = new Material(sh) { name = "DarkroomSprite" };
+                    _mat = new Material(sh) { name = "DarkroomSpriteLit" };
                 }
                 return _mat;
+            }
+        }
+
+        static Material _glowMat;
+
+        /// Unlit material: things that ARE light (strokes, dark paths,
+        /// halos, sparkles, pickups) shine through the darkness.
+        public static Material GlowMat
+        {
+            get
+            {
+                if (_glowMat == null)
+                {
+                    var sh = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default");
+                    if (sh == null) sh = Shader.Find("Sprites/Default");
+                    _glowMat = new Material(sh) { name = "DarkroomSpriteGlow" };
+                }
+                return _glowMat;
             }
         }
 

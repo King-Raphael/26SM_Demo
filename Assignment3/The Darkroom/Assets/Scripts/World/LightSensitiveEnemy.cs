@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 
 namespace Darkroom
 {
@@ -19,6 +20,7 @@ namespace Darkroom
         Collider2D _col;
         SpriteRenderer _sr;
         Transform _visual;
+        Light2D _light;
         Coroutine _crackle;
 
         // ---------- pixel sprites (baked colors, no tinting) ----------
@@ -32,30 +34,34 @@ namespace Darkroom
             if (_sAsleep != null) return;
             string[] body =
             {
-                "..XXXX..",
-                ".XXXXXX.",
-                "XXXXXXXX",
-                "XEEXXEEX",
-                "XXXXXXXX",
-                "XXXXXXXX",
-                ".XXXXXX.",
-                "..XXXX..",
+                "....XXXX....",
+                "..XXXXXXXX..",
+                ".XXXXXXXXXX.",
+                ".XXXXXXXXXX.",
+                "XXEEXXXXEEXX",
+                "XXEEXXXXEEXX",
+                "XXXXXXXXXXXX",
+                "XXXXXXXXXXXX",
+                ".XXXXXXXXXX.",
+                ".XXXXXXXXXX.",
+                "..XXXXXXXX..",
+                "....XXXX....",
             };
             _sAsleep = PixelArt.FromMap("EnemyAsleep", body, new Dictionary<char, Color32>
             {
                 { 'X', new Color32(0x44, 0x44, 0x44, 0xFF) },
                 { 'E', new Color32(0x2B, 0x2B, 0x2B, 0xFF) },   // closed eyes
-            }, 10f);
+            }, 15f);
             _sAwake = PixelArt.FromMap("EnemyAwake", body, new Dictionary<char, Color32>
             {
                 { 'X', new Color32(0x8B, 0x1A, 0x1A, 0xFF) },
-                { 'E', new Color32(0xFF, 0xB3, 0xB3, 0xFF) },   // glowing eyes
-            }, 10f);
+                { 'E', new Color32(0xFF, 0xC4, 0xC4, 0xFF) },   // glowing eyes
+            }, 15f);
             _sCrackle = PixelArt.FromMap("EnemyCrackle", body, new Dictionary<char, Color32>
             {
                 { 'X', new Color32(0x6A, 0x6A, 0x6A, 0xFF) },
                 { 'E', new Color32(0x4A, 0x4A, 0x4A, 0xFF) },
-            }, 10f);
+            }, 15f);
         }
 
         public void Init(float patrolRange, float patrolSpeed)
@@ -72,6 +78,7 @@ namespace Darkroom
             _col = GetComponent<Collider2D>();
             _sr = GetComponentInChildren<SpriteRenderer>();
             _visual = _sr.transform;
+            _light = GetComponentInChildren<Light2D>(true);
         }
 
         void OnEnable()
@@ -95,6 +102,7 @@ namespace Darkroom
             _col.isTrigger = _isAwake;
             gameObject.layer = _isAwake ? Layers.Triggers : Layers.World;
             _sr.sprite = _isAwake ? _sAwake : _sAsleep;
+            if (_light != null) _light.enabled = _isAwake;
 
             if (_crackle != null) { StopCoroutine(_crackle); _crackle = null; }
             // statue "crackle" on freeze (spec stretch #4)

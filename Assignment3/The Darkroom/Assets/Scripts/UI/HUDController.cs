@@ -32,9 +32,10 @@ namespace Darkroom
         static readonly Color BorderDim = new Color(0.23f, 0.23f, 0.23f, 1f);
         static readonly Color DotBright = VisualFactory.BrightStroke;
         static readonly Color DotDim = new Color(0.23f, 0.23f, 0.23f, 1f);
-        static readonly Color OverlayUnder = new Color(0.02f, 0.04f, 0.10f, 0.68f);
+        // Real 2D lighting now does most of the look; the overlay only tints.
+        static readonly Color OverlayUnder = new Color(0.02f, 0.04f, 0.10f, 0.34f);
         static readonly Color OverlayNormal = new Color(0f, 0f, 0f, 0f);
-        static readonly Color OverlayOver = new Color(1f, 0.97f, 0.88f, 0.48f);
+        static readonly Color OverlayOver = new Color(1f, 0.97f, 0.88f, 0.28f);
 
         public static HUDController Build()
         {
@@ -143,6 +144,17 @@ namespace Darkroom
             _strip = NewRect("FilmStrip", CanvasRoot);
             Place(_strip, new Vector2(0f, 1f), new Vector2(24f, -24f), new Vector2(330f, 150f));
             _stripBasePos = _strip.anchoredPosition;
+
+            // film backing + sprocket holes
+            var backing = NewImage("FilmBacking", _strip, new Color(0.055f, 0.055f, 0.055f, 0.92f));
+            Place(backing.rectTransform, new Vector2(0f, 1f), new Vector2(-12f, 12f), new Vector2(336f, 92f));
+            for (int i = 0; i < 7; i++)
+            {
+                var hTop = NewImage("SprocketT" + i, _strip, new Color(0.14f, 0.14f, 0.14f, 1f));
+                Place(hTop.rectTransform, new Vector2(0f, 1f), new Vector2(-2f + i * 52f, 6f), new Vector2(12f, 9f));
+                var hBot = NewImage("SprocketB" + i, _strip, new Color(0.14f, 0.14f, 0.14f, 1f));
+                Place(hBot.rectTransform, new Vector2(0f, 1f), new Vector2(-2f + i * 52f, -71f), new Vector2(12f, 9f));
+            }
 
             _frameColors[0] = new Color(0.10f, 0.13f, 0.25f, 1f);  // Under preview
             _frameColors[1] = new Color(0.55f, 0.55f, 0.55f, 1f);  // Normal preview

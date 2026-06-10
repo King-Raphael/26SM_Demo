@@ -26,6 +26,7 @@ namespace Darkroom
             var gm = managers.AddComponent<GameManager>();
             managers.AddComponent<ExposureManager>();
             managers.AddComponent<AudioDirector>();
+            managers.AddComponent<LightDirector>();
 
             HUDController.Build();
             BackdropBuilder.Build();

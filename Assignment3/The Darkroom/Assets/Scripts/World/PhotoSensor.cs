@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 
 namespace Darkroom
 {
@@ -7,6 +8,7 @@ namespace Darkroom
     public class PhotoSensor : MonoBehaviour
     {
         public SensorDoor Door;
+        public Light2D ActivateLight;
 
         bool _activated;
         SpriteRenderer _sr;
@@ -32,6 +34,7 @@ namespace Darkroom
             _activated = true;
             if (_sr != null) _sr.color = VisualFactory.SensorActive;
             if (_accent != null) _accent.enabled = true;
+            if (ActivateLight != null) ActivateLight.enabled = true;
             if (Door != null) Door.Open();
         }
     }

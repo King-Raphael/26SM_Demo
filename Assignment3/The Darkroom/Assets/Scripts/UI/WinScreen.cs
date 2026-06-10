@@ -84,6 +84,12 @@ namespace Darkroom
                     26, new Color(0.80f, 0.78f, 0.74f, 1f), TextAnchor.MiddleCenter);
                 HUDController.Place(time.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -210f), new Vector2(600f, 40f));
             }
+
+            // photo caption, like the margin print on a contact sheet
+            var caption = HUDController.NewText("WinCaption", transform,
+                "f/1.4 · 1/125 · ISO 400 — THE DARKROOM, frame 11 of 11",
+                20, new Color(0.55f, 0.53f, 0.50f, 1f), TextAnchor.MiddleCenter);
+            HUDController.Place(caption.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 70f), new Vector2(900f, 30f));
         }
 
         static void SetBar(RectTransform rt, Vector2 anchor, Vector2 size)

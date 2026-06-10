@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 
 namespace Darkroom
 {
@@ -17,6 +18,7 @@ namespace Darkroom
 
         LineRenderer _lr;
         LineRenderer _glow;
+        Light2D _light;
         ExposureObject _eo;
         readonly List<Vector2> _pts = new List<Vector2>();
         bool _despawning;
@@ -30,7 +32,7 @@ namespace Darkroom
             var lr = go.AddComponent<LineRenderer>();
             lr.useWorldSpace = true;
             lr.widthMultiplier = Width;
-            lr.sharedMaterial = VisualFactory.SpriteMat;
+            lr.sharedMaterial = VisualFactory.GlowMat;
             lr.sortingOrder = VisualFactory.OrderStroke;
             lr.numCapVertices = 4;
             lr.numCornerVertices = 2;
@@ -45,7 +47,7 @@ namespace Darkroom
             var glow = glowGO.AddComponent<LineRenderer>();
             glow.useWorldSpace = true;
             glow.widthMultiplier = Width * 2.8f;
-            glow.sharedMaterial = VisualFactory.SpriteMat;
+            glow.sharedMaterial = VisualFactory.GlowMat;
             glow.sortingOrder = VisualFactory.OrderStroke - 1;
             glow.numCapVertices = 4;
             glow.numCornerVertices = 2;
@@ -63,9 +65,14 @@ namespace Darkroom
             eo.enabled = false; // not registered / matrix-driven until fixed
             eo.type = type;
 
+            // the stroke is itself a light source
+            var light = LightDirector.CreatePoint(go.transform, Vector2.zero,
+                Color.Lerp(c, Color.white, 0.2f), 2.6f, 0.5f);
+
             var ts = go.AddComponent<TrailStroke>();
             ts._lr = lr;
             ts._glow = glow;
+            ts._light = light;
             ts.Edge = ec;
             ts._eo = eo;
             eo.BoundsProvider = ts.ComputeBounds;
@@ -76,6 +83,7 @@ namespace Darkroom
                 g.a = a * 0.30f;
                 glow.startColor = g;
                 glow.endColor = g;
+                light.intensity = a * 0.6f;
             };
 
             go.SetActive(true);
@@ -91,6 +99,7 @@ namespace Darkroom
             _lr.SetPosition(_pts.Count - 1, p);
             _glow.positionCount = _pts.Count;
             _glow.SetPosition(_pts.Count - 1, p);
+            _light.transform.position = p; // light rides the pen while drawing
         }
 
         /// Returns false (caller should discard) if the stroke is too short to fix.
@@ -99,6 +108,9 @@ namespace Darkroom
             if (_pts.Count < 2) return false;
             IsFixed = true;
             Edge.points = _pts.ToArray(); // transform is identity: local == world
+            var b = ComputeBounds();
+            _light.transform.position = b.center;
+            _light.pointLightOuterRadius = Mathf.Max(2.6f, b.extents.magnitude + 1.2f);
             _eo.enabled = true;           // registers + applies the matrix now
             return true;
         }

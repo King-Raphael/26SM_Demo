@@ -46,6 +46,9 @@ namespace Darkroom
             var pc = go.AddComponent<PlayerController>();
             go.AddComponent<TrailSystem>();
             PlayerAnimator.Attach(pc);
+            // the photographer's own faint glow: never fully blind in Under
+            LightDirector.CreatePoint(go.transform, Vector2.zero,
+                new Color(0.92f, 0.90f, 0.84f), 2.8f, 0.35f);
             return pc;
         }
 

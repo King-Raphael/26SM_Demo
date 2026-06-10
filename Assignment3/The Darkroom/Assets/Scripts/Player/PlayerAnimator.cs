@@ -59,28 +59,73 @@ namespace Darkroom
         static void EnsureSprites()
         {
             if (_idle != null) return;
+            // a small photographer: hair, face, cold scarf, coat, camera
             var pal = new Dictionary<char, Color32>
             {
-                { 'B', new Color32(0xF2, 0xF2, 0xF2, 0xFF) },  // body
-                { 'C', new Color32(0x2E, 0x2E, 0x2E, 0xFF) },  // camera strap
-                { 'D', new Color32(0xC9, 0xC9, 0xC9, 0xFF) },  // legs
+                { 'H', new Color32(0x34, 0x38, 0x3E, 0xFF) },  // hair
+                { 'F', new Color32(0xF2, 0xF2, 0xF2, 0xFF) },  // face
+                { 'D', new Color32(0x2A, 0x2E, 0x36, 0xFF) },  // eyes
+                { 'S', new Color32(0xAE, 0xBB, 0xD0, 0xFF) },  // scarf
+                { 'B', new Color32(0xE6, 0xE8, 0xEC, 0xFF) },  // coat
+                { 'C', new Color32(0x2E, 0x31, 0x38, 0xFF) },  // camera
+                { 'L', new Color32(0x9F, 0xD8, 0xE6, 0xFF) },  // lens
+                { 'G', new Color32(0xC2, 0xC6, 0xCE, 0xFF) },  // legs
+                { 'K', new Color32(0x2B, 0x2E, 0x34, 0xFF) },  // shoes
             };
             string[] torso =
             {
-                "..BBB..",
-                ".BBBBB.",
-                ".BBBBB.",
-                "..BBB..",
-                ".BBBBB.",
-                "BBBBBBB",
-                "BBCCCBB",
-                ".BBBBB.",
-                ".BBBBB.",
+                "..............",
+                "....HHHHHH....",
+                "...HHHHHHHH...",
+                "...HFFFFFFH...",
+                "...FFFFFFFF...",
+                "...FFDFFDFF...",
+                "...FFFFFFFF...",
+                "....FFFFFF....",
+                "...SSSSSSSS...",
+                "..BBSSSSSSBB..",
+                ".BBBBBBBBBBBB.",
+                ".BBBBBBBBBBBB.",
+                ".BBCCCCCCCBBB.",
+                ".BBCCLLCCCBBB.",
+                ".BBCCLLCCCBBB.",
+                ".BBCCCCCCCBBB.",
+                ".BBBBBBBBBBBB.",
+                "..BBBBBBBBBB..",
+                "..BBBBBBBBBB..",
             };
-            _idle = Build("PlayerIdle", torso, pal, "..D.D..", "..D.D..", "..D.D..", "..D.D..");
-            _walkA = Build("PlayerWalkA", torso, pal, "..D.D..", ".D...D.", ".D...D.", "D.....D");
-            _walkB = Build("PlayerWalkB", torso, pal, "..DDD..", "..D.D..", "..D.D..", "..D.D..");
-            _jump = Build("PlayerJump", torso, pal, ".D...D.", "..D.D..", "..DDD..", ".......");
+            _idle = Build("PlayerIdle", torso, pal,
+                "...BBB..BBB...",
+                "...GGG..GGG...",
+                "...GGG..GGG...",
+                "...GGG..GGG...",
+                "...GGG..GGG...",
+                "...GG....GG...",
+                "...KK....KK...");
+            _walkA = Build("PlayerWalkA", torso, pal,
+                "...BBB..BBB...",
+                "..GGG....GGG..",
+                "..GGG....GGG..",
+                ".GGG......GGG.",
+                ".GGG......GGG.",
+                ".GG........GG.",
+                ".KK........KK.");
+            _walkB = Build("PlayerWalkB", torso, pal,
+                "...BBB..BBB...",
+                "....GGGGGG....",
+                "....GGGGGG....",
+                "....GG..GG....",
+                "....GG..GG....",
+                "....GG..GG....",
+                "....KK..KK....");
+            _jump = Build("PlayerJump", torso, pal,
+                "...BBB..BBB...",
+                "..GGG....GGG..",
+                "...GGG..GGG...",
+                "....GGGGGG....",
+                ".....GGGG.....",
+                "..............",
+                "..............");
         }
 
         static Sprite Build(string name, string[] torso, Dictionary<char, Color32> pal, params string[] legs)
@@ -88,7 +133,7 @@ namespace Darkroom
             var rows = new string[torso.Length + legs.Length];
             torso.CopyTo(rows, 0);
             legs.CopyTo(rows, torso.Length);
-            return PixelArt.FromMap(name, rows, pal, 10f); // 7x13 px @ 10 ppu = 0.7 x 1.3
+            return PixelArt.FromMap(name, rows, pal, 20f); // 14x26 px @ 20 ppu = 0.7 x 1.3
         }
     }
 }

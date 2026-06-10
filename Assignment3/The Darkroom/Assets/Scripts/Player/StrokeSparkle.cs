@@ -22,7 +22,7 @@ namespace Darkroom
 
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = VisualFactory.WhiteSprite;
-            sr.sharedMaterial = VisualFactory.SpriteMat;
+            sr.sharedMaterial = VisualFactory.GlowMat;
             sr.color = color;
             sr.sortingOrder = VisualFactory.OrderStroke + 1;
 
