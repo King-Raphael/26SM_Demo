@@ -59,9 +59,10 @@ namespace Darkroom
         Coroutine _hintHideCo;
 
         // misc
-        Text _timerText, _mutedText, _checkpointText, _bannerText;
+        Text _timerText, _mutedText, _checkpointText, _checkpointCaption, _bannerText, _deathText, _jamText;
         GameObject _bannerBox, _pausePanel;
-        Coroutine _overlayCo, _shakeCo, _bannerCo, _checkpointCo, _flashCo, _knobCo, _shutterCo, _controlsCo;
+        bool _jamNoteShown;
+        Coroutine _overlayCo, _shakeCo, _bannerCo, _checkpointCo, _flashCo, _knobCo, _shutterCo, _controlsCo, _deathCo, _jamCo;
 
         static readonly Color OverlayUnder = new Color(0.02f, 0.04f, 0.10f, 0.34f);
         static readonly Color OverlayNormal = new Color(0f, 0f, 0f, 0f);
@@ -232,6 +233,15 @@ namespace Darkroom
             _checkpointText = NewText("CheckpointFlash", CanvasRoot, "", 22, new Color(0.81f, 0.81f, 0.81f, 1f), TextAnchor.MiddleCenter);
             Place(_checkpointText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 200f), new Vector2(800f, 40f));
 
+            _checkpointCaption = NewText("CheckpointCaption", CanvasRoot, "", 19, new Color(0.62f, 0.62f, 0.60f, 1f), TextAnchor.MiddleCenter);
+            Place(_checkpointCaption.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 170f), new Vector2(900f, 28f));
+
+            _deathText = NewText("DeathNote", CanvasRoot, "", 22, RecRed, TextAnchor.MiddleCenter);
+            Place(_deathText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 244f), new Vector2(900f, 36f));
+
+            _jamText = NewText("JamNote", CanvasRoot, "", 18, new Color(0.62f, 0.62f, 0.60f, 1f), TextAnchor.MiddleCenter);
+            Place(_jamText.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -118f), new Vector2(600f, 26f));
+
             _timerText = NewText("ReplayTimer", CanvasRoot, "", 24, new Color(0.73f, 0.73f, 0.73f, 1f), TextAnchor.MiddleRight);
             Place(_timerText.rectTransform, new Vector2(1f, 1f), new Vector2(-36f, -176f), new Vector2(220f, 36f));
 
@@ -348,6 +358,28 @@ namespace Darkroom
             }
         }
 
+        Coroutine _titleDevCo;
+
+        /// The room title develops in like a print: two grain-flicker frames,
+        /// then a steady fade up.
+        IEnumerator RoomTitleDevelop()
+        {
+            var c = TextBright;
+            _roomTitle.color = new Color(c.r, c.g, c.b, 0.35f);
+            yield return new WaitForSeconds(0.05f);
+            _roomTitle.color = new Color(c.r, c.g, c.b, 0.10f);
+            yield return new WaitForSeconds(0.05f);
+            float t = 0f;
+            while (t < 0.6f)
+            {
+                t += Time.deltaTime;
+                _roomTitle.color = new Color(c.r, c.g, c.b, Mathf.Lerp(0.10f, 1f, Mathf.Clamp01(t / 0.6f)));
+                yield return null;
+            }
+            _roomTitle.color = c;
+            _titleDevCo = null;
+        }
+
         IEnumerator ObjectivesPeek()
         {
             _objGroup.alpha = 1f;
@@ -445,12 +477,14 @@ namespace Darkroom
             _pausePanel.SetActive(false);
         }
 
+        /// Boot card: only the promise, not the name. The name lands later,
+        /// the first time the player turns the world dark (TitleDrop).
         IEnumerator TitleCard()
         {
-            var title = NewText("Title", CanvasRoot, "THE DARKROOM", 72, new Color(0.95f, 0.93f, 0.88f, 1f), TextAnchor.MiddleCenter);
-            Place(title.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 90f), new Vector2(1400f, 110f));
             var sub = NewText("TitleSub", CanvasRoot, "develop the world — fix the light", 26, new Color(0.62f, 0.62f, 0.60f, 1f), TextAnchor.MiddleCenter);
-            Place(sub.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 24f), new Vector2(1000f, 40f));
+            Place(sub.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 52f), new Vector2(1000f, 40f));
+            var roll = NewText("TitleRoll", CanvasRoot, "one roll. eleven frames.", 22, new Color(0.52f, 0.52f, 0.50f, 1f), TextAnchor.MiddleCenter);
+            Place(roll.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 12f), new Vector2(1000f, 32f));
 
             yield return new WaitForSeconds(2.0f);
             float t = 0f;
@@ -458,12 +492,50 @@ namespace Darkroom
             {
                 t += Time.deltaTime;
                 float a = Mathf.Lerp(1f, 0f, Mathf.Clamp01(t / 1.6f));
-                var c1 = title.color; c1.a = a; title.color = c1;
                 var c2 = sub.color; c2.a = a; sub.color = c2;
+                var c3 = roll.color; c3.a = a; roll.color = c3;
+                yield return null;
+            }
+            Destroy(sub.gameObject);
+            Destroy(roll.gameObject);
+        }
+
+        bool _titleDropped;
+
+        /// The game names itself at the moment the player is standing inside it:
+        /// THE DARKROOM fades up out of the first real darkness.
+        IEnumerator TitleDrop()
+        {
+            // let the switch itself land first (card, shutter click, grading)
+            yield return new WaitForSeconds(1.35f);
+
+            if (_objCo != null) { StopCoroutine(_objCo); _objCo = null; }
+            _objGroup.alpha = 0f;
+
+            var title = NewText("Title", CanvasRoot, "THE DARKROOM", 72, new Color(0.95f, 0.93f, 0.88f, 0f), TextAnchor.MiddleCenter);
+            Place(title.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 90f), new Vector2(1400f, 110f));
+            if (AudioDirector.Instance != null) AudioDirector.Instance.NudgeHum(0.14f, 4.5f);
+
+            float t = 0f;
+            while (t < 0.9f)
+            {
+                t += Time.deltaTime;
+                float k = Mathf.Clamp01(t / 0.9f);
+                var c = title.color; c.a = k; title.color = c;
+                if (!_controlsGone) _controlsGroup.alpha = Mathf.Lerp(0.65f, 0.2f, k);
+                yield return null;
+            }
+            yield return new WaitForSeconds(2.2f);
+            t = 0f;
+            while (t < 1.4f)
+            {
+                t += Time.deltaTime;
+                float k = Mathf.Clamp01(t / 1.4f);
+                var c = title.color; c.a = 1f - k; title.color = c;
+                if (!_controlsGone) _controlsGroup.alpha = Mathf.Lerp(0.2f, 0.65f, k);
                 yield return null;
             }
             Destroy(title.gameObject);
-            Destroy(sub.gameObject);
         }
 
         // ---------- per-frame ----------
@@ -484,9 +556,13 @@ namespace Darkroom
             {
                 _shownRoom = room;
                 var def = LevelData.Rooms[room];
-                _roomTitle.text = "ROOM " + room + " : " + def.title;
+                // rooms are frames on the roll — a story clock counting toward
+                // the one frame that was never exposed
+                _roomTitle.text = "FRAME " + (room + 1) + " OF " + LevelData.Rooms.Length + " : " + def.title;
                 for (int i = 0; i < 2; i++)
                     _objLines[i].text = i < def.objectives.Length ? "○ " + def.objectives[i] : "";
+                if (_titleDevCo != null) StopCoroutine(_titleDevCo);
+                _titleDevCo = StartCoroutine(RoomTitleDevelop());
                 if (_objCo != null) StopCoroutine(_objCo);
                 _objCo = StartCoroutine(ObjectivesPeek()); // show, then get out of the way
             }
@@ -530,8 +606,21 @@ namespace Darkroom
             float vignette = e == Exposure.Underexposed ? 0.55f : 0f;
             if (_overlayCo != null) StopCoroutine(_overlayCo);
             _overlayCo = StartCoroutine(LerpOverlay(target, vignette, 0.15f));
-            if (_flashCo != null) StopCoroutine(_flashCo);
-            _flashCo = StartCoroutine(OneFrameFlash());
+
+            // the first darkness is the title moment: no white pop, the name instead
+            bool firstDark = !_titleDropped && e == Exposure.Underexposed;
+            bool silent = ExposureManager.Instance != null && ExposureManager.Instance.LastChangeSilent;
+            if (firstDark)
+            {
+                _titleDropped = true;
+                StartCoroutine(TitleDrop());
+            }
+            else if (!silent)
+            {
+                if (_flashCo != null) StopCoroutine(_flashCo);
+                _flashCo = StartCoroutine(OneFrameFlash());
+            }
+
             if (_knobCo != null) StopCoroutine(_knobCo);
             _knobCo = StartCoroutine(MoveKnob(KnobSlots[(int)e]));
             ShowCard(e);
@@ -616,11 +705,46 @@ namespace Darkroom
             _whiteFlash.color = new Color(1f, 1f, 1f, 0f);
         }
 
-        /// Jam: the exposure slider shakes (refused switch).
-        public void JamFeedback()
+        /// Jam: the exposure slider shakes (refused switch). The first PHYSICAL
+        /// jam (matter would develop inside the player) also gets its one-time
+        /// in-fiction explanation under the slider.
+        public void JamFeedback(bool physical)
         {
             if (_shakeCo != null) StopCoroutine(_shakeCo);
             _shakeCo = StartCoroutine(ShakeSlider());
+            if (physical && !_jamNoteShown)
+            {
+                _jamNoteShown = true;
+                if (_jamCo != null) StopCoroutine(_jamCo);
+                _jamCo = StartCoroutine(JamNoteRoutine());
+            }
+        }
+
+        IEnumerator JamNoteRoutine()
+        {
+            _jamText.text = "nothing develops where you stand.";
+            yield return new WaitForSeconds(2.8f);
+            _jamText.text = "";
+            _jamCo = null;
+        }
+
+        /// Post-respawn margin note: thematic (dim, lowercase) on the first
+        /// burned print, terse cause line (REC red) afterwards.
+        public void ShowDeathNote(string line, bool causeLine)
+        {
+            if (_checkpointCo != null) { StopCoroutine(_checkpointCo); _checkpointCo = null; _checkpointText.text = ""; _checkpointCaption.text = ""; }
+            if (_deathCo != null) StopCoroutine(_deathCo);
+            _deathText.fontSize = causeLine ? 22 : 20;
+            _deathText.color = causeLine ? RecRed : new Color(0.62f, 0.62f, 0.60f, 1f);
+            _deathCo = StartCoroutine(DeathNoteRoutine(line, causeLine ? 1.8f : 2.8f));
+        }
+
+        IEnumerator DeathNoteRoutine(string line, float hold)
+        {
+            _deathText.text = line;
+            yield return new WaitForSeconds(hold);
+            _deathText.text = "";
+            _deathCo = null;
         }
 
         IEnumerator ShakeSlider()
@@ -644,9 +768,13 @@ namespace Darkroom
             _shutterCo = StartCoroutine(FadeGroup(_shutterGroup, open ? 1f : 0f, 0.2f));
         }
 
+        bool _recFast;
+
+        /// Finale: the REC dot blinks double-time.
+        public void SetRecFast(bool fast) { _recFast = fast; }
+
         IEnumerator RecBlink()
         {
-            var wait = new WaitForSeconds(0.5f);
             bool on = true;
             while (true)
             {
@@ -654,7 +782,7 @@ namespace Darkroom
                 var c = RecRed;
                 c.a = on ? 1f : 0.25f;
                 _recDot.color = c;
-                yield return wait;
+                yield return new WaitForSeconds(_recFast ? 0.22f : 0.5f);
             }
         }
 
@@ -727,12 +855,20 @@ namespace Darkroom
                 _trailTicks[i].color = i < remaining ? TextBright : new Color(0.25f, 0.25f, 0.25f, 1f);
         }
 
+        /// Film-advance feedback: the trails group jolts as the oldest stroke is wound away.
+        public void PunchTrails()
+        {
+            if (_trailsGroup.activeSelf)
+                StartCoroutine(PunchScale((RectTransform)_trailsGroup.transform));
+        }
+
         // ---------- hints / banner / checkpoint ----------
 
         public void ShowHint(string text, object key)
         {
             _hintKey = key;
             if (_hintHideCo != null) { StopCoroutine(_hintHideCo); _hintHideCo = null; }
+            _bubble.sizeDelta = new Vector2(460f, text.Length > 70 ? 112f : 84f);
             _bubbleText.text = text;
             var comp = key as Component;
             _bubbleAnchor = comp != null ? comp.transform : null;
@@ -772,17 +908,21 @@ namespace Darkroom
             _bannerBox.SetActive(false);
         }
 
-        public void CheckpointFlash()
+        public void CheckpointFlash(string caption = "")
         {
             if (_checkpointCo != null) StopCoroutine(_checkpointCo);
-            _checkpointCo = StartCoroutine(CheckpointRoutine());
+            _checkpointCo = StartCoroutine(CheckpointRoutine(caption));
         }
 
-        IEnumerator CheckpointRoutine()
+        IEnumerator CheckpointRoutine(string caption)
         {
+            bool noted = !string.IsNullOrEmpty(caption);
             _checkpointText.text = "CHECKPOINT DEVELOPED";
-            yield return new WaitForSeconds(1.6f);
+            _checkpointCaption.text = noted ? caption : "";
+            // a margin note earns a longer look
+            yield return new WaitForSeconds(noted ? 2.6f : 1.6f);
             _checkpointText.text = "";
+            _checkpointCaption.text = "";
         }
 
         // ---------- fades ----------
@@ -899,6 +1039,11 @@ namespace Darkroom
             _vignette.color = new Color(1f, 1f, 1f, 0f);
             _bannerBox.SetActive(false);
             _checkpointText.text = "";
+            _checkpointCaption.text = "";
+            if (_deathCo != null) { StopCoroutine(_deathCo); _deathCo = null; }
+            _deathText.text = "";
+            if (_jamCo != null) { StopCoroutine(_jamCo); _jamCo = null; }
+            _jamText.text = "";
             _blackFade.color = new Color(0f, 0f, 0f, 0f);
             _whiteFlash.color = new Color(1f, 1f, 1f, 0f);
             _bubble.gameObject.SetActive(false);
@@ -912,6 +1057,9 @@ namespace Darkroom
             _cardGroup.alpha = 0f;
             _cardGroup.gameObject.SetActive(false);
             _shutterGroup.alpha = 0f;
+            _recFast = false;
+            _jamNoteShown = false; // per-run, like the first-death note
+            // (_titleDropped stays per-session: the name lands only once)
         }
     }
 }

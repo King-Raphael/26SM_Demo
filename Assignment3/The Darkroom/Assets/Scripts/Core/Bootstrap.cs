@@ -28,6 +28,7 @@ namespace Darkroom
             managers.AddComponent<AudioDirector>();
             managers.AddComponent<LightDirector>();
             managers.AddComponent<PauseController>();
+            managers.AddComponent<PhotoAlbum>();
 
             HUDController.Build();
             BackdropBuilder.Build();

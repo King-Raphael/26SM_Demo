@@ -51,8 +51,13 @@ namespace Darkroom
     {
         public string name;
         public float cx, cy;
+        /// Contact-sheet margin note shown when this checkpoint develops
+        /// (late-game only; the two "unexposed" notes plant the ending).
+        public string caption;
         public CheckpointDef(string name, float cx, float cy)
-        { this.name = name; this.cx = cx; this.cy = cy; }
+        { this.name = name; this.cx = cx; this.cy = cy; this.caption = ""; }
+        public CheckpointDef(string name, float cx, float cy, string caption)
+        { this.name = name; this.cx = cx; this.cy = cy; this.caption = caption; }
     }
 
     public struct HintDef
@@ -150,7 +155,7 @@ namespace Darkroom
                 checkpoints = new[] { new CheckpointDef("CP_R1", 6.2f, 1.2f) },
                 hints = new[]
                 {
-                    new HintDef("The path is missing. UNDEREXPOSED reveals dark matter.", 8.5f, 1.6f, 4.5f, 2f),
+                    new HintDef("UNDER reveals what the light skipped — the path was never printed.", 8.5f, 1.6f, 4.5f, 2f),
                 },
             },
 
@@ -171,7 +176,7 @@ namespace Darkroom
                 hints = new[]
                 {
                     new HintDef("OVEREXPOSED burns through white barriers.", 22f, 2.3f, 4f, 2f),
-                    new HintDef("Too much light wakes red eyes. Press 2 — in NORMAL they sleep.", 26.5f, 1.6f, 4f, 2f),
+                    new HintDef("Flash too hard and the eyes come back red. Press 2 — in NORMAL they sleep. Every photograph has a subject.", 26.5f, 1.6f, 4f, 2f),
                 },
             },
 
@@ -303,7 +308,7 @@ namespace Darkroom
                     new BoxDef("R8_ThreatPerch",    SG, 122.8f, 7.3f, 1f,   0.4f),
                 },
                 enemies = new[] { new EnemyDef("R8_Enemy", 122.8f, 8.0f, 0f, 0f) },
-                checkpoints = new[] { new CheckpointDef("CP_R8", 108.3f, 7.2f) },
+                checkpoints = new[] { new CheckpointDef("CP_R8", 108.3f, 7.2f, "frame 9 — nothing carries over. nothing ever does.") },
                 hints = new[]
                 {
                     new HintDef("Your trail dies with the light that made it. Land on real ground before you switch.", 110.5f, 7.6f, 5.5f, 2f),
@@ -329,13 +334,15 @@ namespace Darkroom
                 },
                 checkpoints = new[]
                 {
-                    new CheckpointDef("CP_R9a", 125.6f, 10.2f),
-                    new CheckpointDef("CP_R9b", 128.5f, -0.7f),
+                    new CheckpointDef("CP_R9a", 125.6f, 10.2f, "frame 10 — a dead end, printed."),
+                    new CheckpointDef("CP_R9b", 128.5f, -0.7f, "frame 10 — the floor was a photograph too."),
                 },
                 hints = new[]
                 {
                     new HintDef("A dead end — unless some of this floor is only a photograph. Stand on the dark. Then let it go.", 126f, 10.4f, 3.5f, 2f),
-                    new HintDef("Developed downward. Keep going.", 131f, -0.6f, 4f, 2f),
+                    // greets the relight at the stairs instead of interrupting the
+                    // dark (left edge 139.6: strictly past the relight at 138.5)
+                    new HintDef("Developed downward. Keep going.", 141.6f, 0.2f, 4f, 2.6f),
                 },
             },
 
@@ -368,13 +375,13 @@ namespace Darkroom
                 enemies = new[] { new EnemyDef("R10_Guard", 171.5f, 7.4f, 1.0f, 1.25f) },
                 checkpoints = new[]
                 {
-                    new CheckpointDef("CP_R10a", 143.2f, 3.7f),
-                    new CheckpointDef("CP_R10b", 158.9f, 5.2f),
+                    new CheckpointDef("CP_R10a", 143.2f, 3.7f, "frame 11 — unexposed."),
+                    new CheckpointDef("CP_R10b", 158.9f, 5.2f, "frame 11 — still unexposed."),
                 },
                 hints = new[]
                 {
                     new HintDef("The final print: reveal, draw, anchor, burn.", 145.5f, 3.8f, 4f, 2f),
-                    new HintDef("One light left. Its keeper wakes with it.", 159.5f, 5.4f, 3.5f, 2f),
+                    new HintDef("The last frame is not empty. Its subject wakes with the light.", 159.5f, 5.4f, 3.5f, 2f),
                 },
                 exits = new[] { new ExitDef(174.2f, 7.5f, 1f, 2f) },
             },

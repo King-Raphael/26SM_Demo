@@ -13,6 +13,14 @@ namespace Darkroom
 
         public Exposure Current { get; private set; } = Exposure.Normal;
 
+        /// While locked (the Room 9 blackout), every switch request is refused —
+        /// the slider shakes: for once, the world decides.
+        public bool Locked { get; private set; }
+        /// True only while a silent ForceSet is being applied (no click, no flash).
+        public bool LastChangeSilent { get; private set; }
+
+        public void SetLocked(bool locked) { Locked = locked; }
+
         /// Fired after Current changes.
         public event Action<Exposure> OnExposureChanged;
         /// Fired just before Current changes (TrailSystem fixes the live stroke here).
@@ -28,24 +36,29 @@ namespace Darkroom
         public bool TrySetExposure(Exposure next)
         {
             if (next == Current) return false;
+            if (Locked) { Jam(false); return false; }
             var gm = GameManager.Instance;
-            if (next == Exposure.Overexposed && (gm == null || !gm.HasFlash)) { Jam(); return false; }
-            if (next == Exposure.Underexposed && (gm == null || !gm.HasNegative)) { Jam(); return false; }
-            if (WouldJam(next)) { Jam(); return false; }
+            if (next == Exposure.Overexposed && (gm == null || !gm.HasFlash)) { Jam(false); return false; }
+            if (next == Exposure.Underexposed && (gm == null || !gm.HasNegative)) { Jam(false); return false; }
+            if (WouldJam(next)) { Jam(true); return false; }
             Apply(next);
             return true;
         }
 
-        /// Used by respawn: never refused, never gated.
-        public void ForceSet(Exposure next)
+        /// Used by respawn and scripted moments: never refused, never gated.
+        /// silent = no shutter click, no white pop (the blackout's quiet hand).
+        public void ForceSet(Exposure next, bool silent = false)
         {
             if (next == Current) return;
+            LastChangeSilent = silent;
             Apply(next);
+            LastChangeSilent = false;
         }
 
         /// E/Q cycling: skips locked states and states that would jam.
         public void Cycle(int dir)
         {
+            if (Locked) { Jam(false); return; }
             var gm = GameManager.Instance;
             for (int i = 1; i <= 2; i++)
             {
@@ -56,7 +69,7 @@ namespace Darkroom
                 Apply(cand);
                 return;
             }
-            Jam();
+            Jam(false);
         }
 
         /// True if any registered object that is non-solid now but solid in `next`
@@ -83,9 +96,11 @@ namespace Darkroom
             OnExposureChanged?.Invoke(next);
         }
 
-        void Jam()
+        /// physical = the switch was refused because matter would develop
+        /// inside the player (as opposed to a merely locked/unavailable state).
+        void Jam(bool physical)
         {
-            if (HUDController.Instance != null) HUDController.Instance.JamFeedback();
+            if (HUDController.Instance != null) HUDController.Instance.JamFeedback(physical);
             if (AudioDirector.Instance != null) AudioDirector.Instance.PlayJam();
         }
     }

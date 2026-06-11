@@ -4,6 +4,9 @@ using UnityEngine;
 
 namespace Darkroom
 {
+    /// What burned the print (drives the post-respawn margin note).
+    public enum DeathCause { Fall, Enemy, Restart }
+
     /// Abilities, checkpoint, respawn, win state, and global key handling (1/2/3, E/Q, R).
     public class GameManager : MonoBehaviour
     {
@@ -15,8 +18,12 @@ namespace Darkroom
         public bool HasNegative { get; private set; }
         public bool IsRespawning { get; private set; }
         public bool HasWon { get; private set; }
+        /// True during the finale: input ignored, RunTime frozen.
+        public bool IsCinematic { get; private set; }
         /// Set on the first win; survives FullRestart. Unlocks the replay timer HUD.
         public bool HasEverWon { get; private set; }
+        /// Every burned print this run — the win caption calls the run "take N+1".
+        public int Deaths { get; private set; }
         public float RunTime { get; private set; }
         public Vector2 CheckpointPos { get; private set; }
         public PlayerController Player { get; set; }
@@ -32,14 +39,14 @@ namespace Darkroom
         {
             if (Player == null) return;
             if (PauseController.IsPaused) return;
-            if (!HasWon) RunTime += Time.deltaTime;
+            if (!HasWon && !IsCinematic) RunTime += Time.deltaTime;
 
             if (HasWon)
             {
                 if (DarkroomInput.RestartPressed) FullRestart();
                 return;
             }
-            if (IsRespawning) return;
+            if (IsRespawning || IsCinematic) return;
 
             var em = ExposureManager.Instance;
             if (DarkroomInput.Set1Pressed) em.TrySetExposure(Exposure.Underexposed);
@@ -48,17 +55,17 @@ namespace Darkroom
             else if (DarkroomInput.CycleForwardPressed) em.Cycle(1);
             else if (DarkroomInput.CycleBackPressed) em.Cycle(-1);
 
-            if (DarkroomInput.RestartPressed) { Kill(); return; }
-            if (Player.transform.position.y < KillY) Kill();
+            if (DarkroomInput.RestartPressed) { Kill(DeathCause.Restart); return; }
+            if (Player.transform.position.y < KillY) Kill(DeathCause.Fall);
         }
 
         public void InitCheckpoint(Vector2 p) { CheckpointPos = p; }
 
-        public void SetCheckpoint(Vector2 p)
+        public void SetCheckpoint(Vector2 p, string caption = "")
         {
             if ((p - CheckpointPos).sqrMagnitude < 0.0001f) return;
             CheckpointPos = p;
-            if (HUDController.Instance != null) HUDController.Instance.CheckpointFlash();
+            if (HUDController.Instance != null) HUDController.Instance.CheckpointFlash(caption);
             if (AudioDirector.Instance != null) AudioDirector.Instance.PlayCheckpoint();
         }
 
@@ -72,13 +79,16 @@ namespace Darkroom
         }
 
         /// Respawn at the checkpoint: <=0.3 s fade, exposure reset to Normal, strokes cleared.
-        public void Kill()
+        public void Kill(DeathCause cause)
         {
             if (IsRespawning || HasWon) return;
-            StartCoroutine(RespawnRoutine());
+            Deaths++;
+            StartCoroutine(RespawnRoutine(cause));
         }
 
-        IEnumerator RespawnRoutine()
+        bool _firstDeathNoted;
+
+        IEnumerator RespawnRoutine(DeathCause cause)
         {
             IsRespawning = true;
             Player.InputEnabled = false;
@@ -101,8 +111,115 @@ namespace Darkroom
             StrokeSparkle.Burst(Player.FeetPos, new Color(0.75f, 0.78f, 0.85f, 1f), 6);
             if (AudioDirector.Instance != null) AudioDirector.Instance.PlayDevelop();
 
+            // margin note for real deaths (R stays a silent tool)
+            if (hud != null && cause != DeathCause.Restart)
+            {
+                if (!_firstDeathNoted)
+                {
+                    _firstDeathNoted = true;
+                    hud.ShowDeathNote("the print burned. the negative survives.", false);
+                }
+                else
+                {
+                    hud.ShowDeathNote(cause == DeathCause.Enemy
+                        ? "BURNED — too much light."
+                        : "OUT OF FRAME.", true);
+                }
+            }
+
             Player.InputEnabled = true;
             IsRespawning = false;
+        }
+
+        /// The exit no longer hard-cuts: she turns, the journey arrives as
+        /// accelerating shutter clicks, warm light sweeps the frame, three
+        /// beeps — and she takes frame 11 herself.
+        public void BeginFinale()
+        {
+            if (HasWon || IsRespawning || IsCinematic) return;
+            StartCoroutine(FinaleRoutine());
+        }
+
+        IEnumerator FinaleRoutine()
+        {
+            IsCinematic = true;
+            Player.InputEnabled = false;
+            Player.Body.linearVelocity = new Vector2(0f, Player.Body.linearVelocity.y);
+            var ad = AudioDirector.Instance;
+            var hud = HUDController.Instance;
+            var anim = Player.GetComponent<PlayerAnimator>();
+
+            // held breath: the pedal stops, the guard freezes gray
+            if (ad != null) ad.CutPedal();
+            if (ExposureManager.Instance != null)
+                ExposureManager.Instance.ForceSet(Exposure.Normal);
+            yield return new WaitForSeconds(0.55f);
+
+            // she turns to face the world she walked
+            if (anim != null) anim.SetPose(SilhouetteArt.PlayerIdle, true);
+            yield return new WaitForSeconds(0.5f);
+
+            // the whole journey approaches, click by click
+            if (ad != null) yield return StartCoroutine(ad.FinaleBursts());
+
+            // warm light sweeps the frame; the last lamps flare
+            if (LightDirector.Instance != null)
+                LightDirector.Instance.SetOverride(new Color(1.0f, 0.93f, 0.80f), 1.15f);
+            FlareExitLamps();
+            if (hud != null) { hud.SetShutterOpen(true); hud.SetRecFast(true); }
+            if (ad != null) ad.PlayFinaleChord();
+
+            // three beeps — and she raises the camera
+            for (int i = 0; i < 3; i++)
+            {
+                if (ad != null) ad.PlayBeep();
+                yield return new WaitForSeconds(0.42f);
+            }
+            if (anim != null) anim.SetPose(SilhouetteArt.PlayerShoot, true);
+            yield return new WaitForSeconds(0.6f);
+
+            // frame 11, taken by her own hand (retakes the checkpoint's shot)
+            if (PhotoAlbum.Instance != null) PhotoAlbum.Instance.CaptureRoom(10, true);
+            yield return null;
+            yield return null; // capture lands at end of frame
+
+            if (hud != null) { hud.SetShutterOpen(false); hud.SetRecFast(false); }
+            if (LightDirector.Instance != null) LightDirector.Instance.ClearOverride();
+            IsCinematic = false;
+            Win();
+        }
+
+        /// The hanging lamps inside the final camera frame blaze up. The
+        /// backdrop survives FullRestart, so originals are kept for restore.
+        readonly System.Collections.Generic.List<UnityEngine.Rendering.Universal.Light2D> _flaredLamps
+            = new System.Collections.Generic.List<UnityEngine.Rendering.Universal.Light2D>();
+        readonly System.Collections.Generic.List<float> _flaredOriginals
+            = new System.Collections.Generic.List<float>();
+
+        void FlareExitLamps()
+        {
+            var lampsRoot = GameObject.Find("_Backdrop/Lamps");
+            if (lampsRoot == null) return;
+            foreach (Transform lamp in lampsRoot.transform)
+            {
+                float x = lamp.position.x;
+                if (x < 160f || lamp.position.y < 5f) continue;
+                foreach (var l in lamp.GetComponentsInChildren<UnityEngine.Rendering.Universal.Light2D>())
+                {
+                    if (_flaredLamps.Contains(l)) continue;
+                    _flaredLamps.Add(l);
+                    _flaredOriginals.Add(l.intensity);
+                    l.intensity = 1.4f;
+                }
+            }
+        }
+
+        void UnflareExitLamps()
+        {
+            for (int i = 0; i < _flaredLamps.Count; i++)
+                if (_flaredLamps[i] != null) _flaredLamps[i].intensity = _flaredOriginals[i];
+            _flaredLamps.Clear();
+            _flaredOriginals.Clear();
         }
 
         public void Win()
@@ -122,19 +239,27 @@ namespace Darkroom
         {
             StopAllCoroutines();
             IsRespawning = false;
+            IsCinematic = false;
             HasWon = false;
             HasFlash = false;
             HasShutter = false;
             HasNegative = false;
+            Deaths = 0;
+            _firstDeathNoted = false;
             RunTime = 0f;
             OnRespawn?.Invoke();
+            if (PhotoAlbum.Instance != null) PhotoAlbum.Instance.Clear();
             var old = GameObject.Find("_Level");
             if (old != null) Destroy(old);
             LevelBuilder.Build(Bootstrap.BuildThroughRoomCount);
             CheckpointPos = Bootstrap.SpawnPos;
             Player.Teleport(Bootstrap.SpawnPos);
             Player.InputEnabled = true;
+            var animator = Player.GetComponent<PlayerAnimator>();
+            if (animator != null) animator.ClearPose();
             ExposureManager.Instance.ForceSet(Exposure.Normal);
+            UnflareExitLamps();
+            if (AudioDirector.Instance != null) AudioDirector.Instance.ResetFinaleAudio();
             if (HUDController.Instance != null) HUDController.Instance.ResetForRestart();
         }
     }

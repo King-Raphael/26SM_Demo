@@ -10,6 +10,10 @@ namespace Darkroom
         const float MinX = -2f, MaxX = 170f, MinY = -1f, MaxY = 9f;
         const float SmoothTime = 0.12f;
 
+        /// Scripted moments (the Room 9 drop) stretch the follow so the
+        /// camera visibly fails to keep up. 1 = normal.
+        public float LagScale = 1f;
+
         Vector3 _vel;
         Camera _cam;
 
@@ -19,7 +23,7 @@ namespace Darkroom
         {
             if (Target == null) return;
             var desired = new Vector3(Target.position.x, Target.position.y, transform.position.z);
-            var p = Vector3.SmoothDamp(transform.position, desired, ref _vel, SmoothTime);
+            var p = Vector3.SmoothDamp(transform.position, desired, ref _vel, SmoothTime * LagScale);
             p.x = Mathf.Clamp(p.x, MinX, MaxX);
             p.y = Mathf.Clamp(p.y, MinY, MaxY);
             transform.position = p;

@@ -79,12 +79,14 @@ namespace Darkroom
 
         // ---------- the girl (42x78 @ 60ppu = 0.7 x 1.3) ----------
 
-        static Sprite _pIdle, _pWalkA, _pWalkB, _pJump;
+        static Sprite _pIdle, _pWalkA, _pWalkB, _pJump, _pShoot;
 
         public static Sprite PlayerIdle { get { EnsurePlayer(); return _pIdle; } }
         public static Sprite PlayerWalkA { get { EnsurePlayer(); return _pWalkA; } }
         public static Sprite PlayerWalkB { get { EnsurePlayer(); return _pWalkB; } }
         public static Sprite PlayerJump { get { EnsurePlayer(); return _pJump; } }
+        /// Finale pose: the camera raised to her eye.
+        public static Sprite PlayerShoot { get { EnsurePlayer(); return _pShoot; } }
 
         static void EnsurePlayer()
         {
@@ -93,6 +95,42 @@ namespace Darkroom
             _pWalkA = Girl("GirlWalkA", 12f, 29f, 0f, 14f);
             _pWalkB = Girl("GirlWalkB", 19f, 22f, 0f, 13f);
             _pJump = Girl("GirlJump", 16f, 25f, 10f, 16f);
+            _pShoot = GirlShoot();
+        }
+
+        /// Idle stance, one arm raised, the camera at her eye. The lens
+        /// glint replaces the glowing eye — she sees through it now.
+        static Sprite GirlShoot()
+        {
+            var b = new Buf(42, 78);
+
+            // legs + shoes (idle stance)
+            b.FillRect(15f, 0f, 19f, 20f, Body);
+            b.FillRect(22f, 0f, 26f, 20f, Body);
+            b.FillRect(14f, 0f, 20f, 3f, Body);
+            b.FillRect(21f, 0f, 27f, 3f, Body);
+
+            // A-line dress + torso (as idle)
+            b.FillTaper(21f, 16f, 46f, 13f, 6f, Body);
+            b.FillTaper(21f, 46f, 55f, 6f, 5f, Body);
+
+            // left arm down, right arm raised toward the face
+            b.FillRect(14f, 28f, 17f, 50f, Body);
+            b.FillTaper(28.5f, 44f, 60f, 2f, 2f, Body);
+
+            // head + bun
+            b.FillEllipse(21f, 64f, 8.5f, 9f, Body);
+            b.FillEllipse(13f, 69f, 4.5f, 4.5f, Body);
+
+            // the camera, held to her eye
+            b.FillRect(24f, 57f, 37f, 66f, Body);
+
+            b.RimLeft(Rim);
+
+            // viewfinder/lens glint where the glowing eye used to be
+            b.FillRect(29f, 60f, 32f, 63f, Eye);
+
+            return b.ToSprite("GirlShoot", 60f);
         }
 
         /// legL/legR = leg center x; legLift = raised feet (jump tuck); hemHW = dress hem half-width.

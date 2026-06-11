@@ -129,6 +129,9 @@ namespace Darkroom
                 {
                     _despawning.Add(oldest); // still ours to clear on respawn
                     oldest.BeginDespawn(_player);
+                    // the roll only holds three: ratchet forward, audibly
+                    if (AudioDirector.Instance != null) AudioDirector.Instance.PlayFilmAdvance();
+                    if (HUDController.Instance != null) HUDController.Instance.PunchTrails();
                 }
             }
             UpdateDots();

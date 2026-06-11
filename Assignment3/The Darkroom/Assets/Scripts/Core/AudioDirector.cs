@@ -11,11 +11,27 @@ namespace Darkroom
 
         const int SR = 44100;
 
-        AudioSource _sfx, _foot, _hum, _hiss, _draw, _room;
-        AudioClip _click, _jam, _pickup, _win;
-        AudioClip _footstep, _jump, _land, _death, _develop, _checkpoint, _door;
-        float _humTarget, _hissTarget, _drawTarget;
+        AudioSource _sfx, _foot, _hum, _hiss, _draw, _room, _wind, _pedal;
+        AudioClip _click, _jam, _pickup, _win, _advance, _beep, _chord;
+        AudioClip _footstep, _jump, _land, _death, _develop, _developLong, _checkpoint, _door;
+        bool _pedalCut;
+        float _humTarget, _hissTarget, _drawTarget, _windTarget;
         readonly System.Random _rng = new System.Random(20260611);
+
+        // Single owner of the ambience level: every bed (room tone, hum, hiss)
+        // is scaled by one duck factor so scripted moments can't fight each other.
+        float _duck = 1f, _duckTarget = 1f, _duckSpeed = 1.2f;
+
+        /// Pull the whole ambience bed toward `level` (0..1). The Room 9
+        /// blackout sinks it to near-silence; pass 1 to let it back up.
+        public void DuckAmbience(float level, float speed = 1.2f)
+        {
+            _duckTarget = Mathf.Clamp01(level);
+            _duckSpeed = speed;
+        }
+
+        /// Footsteps read louder when everything else has gone quiet.
+        public float FootstepBoost = 1f;
 
         void Awake()
         {
@@ -31,8 +47,12 @@ namespace Darkroom
             _land = BuildLand();
             _death = BuildDeath();
             _develop = BuildDevelop();
+            _developLong = BuildDevelopLong();
             _checkpoint = BuildCheckpoint();
             _door = BuildDoor();
+            _advance = BuildFilmAdvance();
+            _beep = BuildBeep();
+            _chord = BuildFinaleChord();
 
             _hum = NewSource(true);
             _hum.clip = BuildHumLoop();
@@ -54,6 +74,19 @@ namespace Darkroom
             _room.clip = BuildRoomTone();
             _room.volume = 0.05f;
             _room.Play();
+
+            // wind: only audible during the Room 9 drop
+            _wind = NewSource(true);
+            _wind.clip = BuildWindLoop();
+            _wind.volume = 0f;
+            _wind.Play();
+
+            // pedal tone: a near-subliminal throb that climbs through Room 10
+            // and cuts to dead silence the instant the finale begins
+            _pedal = NewSource(true);
+            _pedal.clip = BuildPedalLoop();
+            _pedal.volume = 0f;
+            _pedal.Play();
         }
 
         AudioSource NewSource(bool loop)
@@ -79,16 +112,94 @@ namespace Darkroom
 
         void HandleExposure(Exposure e)
         {
-            _sfx.PlayOneShot(_click, 0.5f);
+            bool silent = ExposureManager.Instance != null && ExposureManager.Instance.LastChangeSilent;
+            if (!silent) _sfx.PlayOneShot(_click, 0.5f);
             _humTarget = e == Exposure.Underexposed ? 0.22f : 0f;
             _hissTarget = e == Exposure.Overexposed ? 0.12f : 0f;
         }
 
         void Update()
         {
-            _hum.volume = Mathf.MoveTowards(_hum.volume, _humTarget, Time.deltaTime * 1.2f);
-            _hiss.volume = Mathf.MoveTowards(_hiss.volume, _hissTarget, Time.deltaTime * 1.2f);
+            _duck = Mathf.MoveTowards(_duck, _duckTarget, Time.deltaTime * _duckSpeed);
+            _hum.volume = Mathf.MoveTowards(_hum.volume, Mathf.Min(0.4f, _humTarget + _humNudge) * _duck, Time.deltaTime * 1.2f);
+            _hiss.volume = Mathf.MoveTowards(_hiss.volume, _hissTarget * _duck, Time.deltaTime * 1.2f);
+            _room.volume = 0.05f * _duck;
             _draw.volume = Mathf.MoveTowards(_draw.volume, _drawTarget, Time.deltaTime * 3f);
+            _wind.volume = Mathf.MoveTowards(_wind.volume, _windTarget, Time.deltaTime * 0.9f);
+
+            // pedal rises with x through the final room — too slow to notice
+            // arriving, impossible to miss when it stops
+            float pedalTarget = 0f;
+            var gm = GameManager.Instance;
+            if (!_pedalCut && gm != null && gm.Player != null && !gm.HasWon)
+            {
+                float x = gm.Player.transform.position.x;
+                if (x > 142.5f)
+                    pedalTarget = Mathf.Lerp(0f, 0.10f, Mathf.Clamp01((x - 142.5f) / 26.5f));
+            }
+            _pedal.volume = Mathf.MoveTowards(_pedal.volume, pedalTarget * _duck, Time.deltaTime * 0.15f);
+        }
+
+        /// The held breath before the final photograph.
+        public void CutPedal()
+        {
+            _pedalCut = true;
+            _pedal.volume = 0f;
+        }
+
+        public void ResetFinaleAudio() { _pedalCut = false; }
+
+        /// Rushing air during the Room 9 drop (0 to cut).
+        public void SetWind(float v) { _windTarget = Mathf.Clamp01(v); }
+
+        /// Bare shutter click outside an exposure change (the blackout's relight).
+        public void PlayClick() { _sfx.PlayOneShot(_click, 0.5f); }
+
+        /// Soft tick for each contact-sheet thumbnail developing in.
+        public void PlayTick() { _sfx.PlayOneShot(_click, 0.16f); }
+
+        /// Viewfinder countdown beep (three before the final shot).
+        public void PlayBeep() { _sfx.PlayOneShot(_beep, 0.3f); }
+
+        /// The only melody in the game: the checkpoint's two notes plus one
+        /// new one, sustained — everything she saved, resolving.
+        public void PlayFinaleChord() { _sfx.PlayOneShot(_chord, 0.45f); }
+
+        /// The journey arrives at the door: shutter clicks from far to near,
+        /// faster and brighter until they meet the present.
+        public System.Collections.IEnumerator FinaleBursts()
+        {
+            float interval = 0.5f, pitch = 0.8f, vol = 0.12f;
+            for (int i = 0; i < 9; i++)
+            {
+                _foot.pitch = pitch;
+                _foot.PlayOneShot(_click, vol);
+                yield return new WaitForSeconds(interval);
+                interval = Mathf.Max(0.09f, interval * 0.78f);
+                pitch = Mathf.Min(1.6f, pitch * 1.09f);
+                vol = Mathf.Min(0.5f, vol * 1.25f);
+            }
+            _foot.pitch = 1f;
+        }
+
+        float _humNudge;
+
+        /// Momentarily lean on the under-hum (the title drop rides it), then let go.
+        public void NudgeHum(float amount, float dur)
+        {
+            StartCoroutine(HumNudgeRoutine(amount, dur));
+        }
+
+        System.Collections.IEnumerator HumNudgeRoutine(float amount, float dur)
+        {
+            float t = 0f;
+            while (t < dur)
+            {
+                t += Time.deltaTime;
+                _humNudge = Mathf.Lerp(amount, 0f, Mathf.Clamp01(t / dur));
+                yield return null;
+            }
+            _humNudge = 0f;
         }
 
         public void PlayJam() { _sfx.PlayOneShot(_jam, 0.6f); }
@@ -97,15 +208,19 @@ namespace Darkroom
         public void PlayFootstep()
         {
             _foot.pitch = 0.9f + (float)_rng.NextDouble() * 0.25f;
-            _foot.PlayOneShot(_footstep, 0.22f);
+            _foot.PlayOneShot(_footstep, 0.22f * FootstepBoost);
         }
 
         public void PlayJumpSound() { _sfx.PlayOneShot(_jump, 0.3f); }
         public void PlayLand(float strength01) { _sfx.PlayOneShot(_land, 0.15f + 0.35f * Mathf.Clamp01(strength01)); }
         public void PlayDeath() { _sfx.PlayOneShot(_death, 0.6f); }
         public void PlayDevelop() { _sfx.PlayOneShot(_develop, 0.4f); }
+        /// The win screen's slow print-surfacing swell.
+        public void PlayDevelopLong() { _sfx.PlayOneShot(_developLong, 0.45f); }
         public void PlayCheckpoint() { _sfx.PlayOneShot(_checkpoint, 0.35f); }
         public void PlayDoor() { _sfx.PlayOneShot(_door, 0.55f); }
+        /// The roll ratchets forward: the oldest stroke is wound away.
+        public void PlayFilmAdvance() { _sfx.PlayOneShot(_advance, 0.4f); }
 
         /// The "exposing" crackle while a stroke is being drawn.
         public void SetDrawing(bool drawing) { _drawTarget = drawing ? 0.2f : 0f; }
@@ -239,6 +354,24 @@ namespace Darkroom
             return ToClip("death", d);
         }
 
+        /// The final print surfaces: a long, patient version of the develop
+        /// swell (two detuned sines so it shimmers slightly).
+        AudioClip BuildDevelopLong()
+        {
+            int n = (int)(SR * 1.9f);
+            var d = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)SR;
+                float k = t / 1.9f;
+                float f = Mathf.Lerp(160f, 440f, k * k); // slow start, confident finish
+                float env = Mathf.Pow(Mathf.Sin(Mathf.Clamp01(k) * Mathf.PI), 0.8f);
+                d[i] = (Mathf.Sin(2f * Mathf.PI * f * t)
+                      + 0.4f * Mathf.Sin(2f * Mathf.PI * (f * 1.005f) * t)) * env * 0.26f;
+            }
+            return ToClip("develop_long", d);
+        }
+
         /// The image re-develops: gentle rising swell.
         AudioClip BuildDevelop()
         {
@@ -290,6 +423,23 @@ namespace Darkroom
             return ToClip("door", d);
         }
 
+        /// Two quick high shutter ticks 60 ms apart: the film-advance ratchet.
+        AudioClip BuildFilmAdvance()
+        {
+            int n = (int)(SR * 0.16f);
+            var d = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)SR;
+                float v = 0f;
+                if (t < 0.025f) v += Noise() * Mathf.Exp(-t * 500f);
+                if (t >= 0.06f && t < 0.09f) { float u = t - 0.06f; v += 0.8f * Noise() * Mathf.Exp(-u * 500f); }
+                v += 0.25f * Mathf.Sin(2f * Mathf.PI * 290f * t) * Mathf.Exp(-t * 60f);
+                d[i] = Mathf.Clamp(v, -1f, 1f) * 0.7f;
+            }
+            return ToClip("film_advance", d);
+        }
+
         /// Sparse crackle loop: the sound of light being written.
         AudioClip BuildDrawLoop()
         {
@@ -303,6 +453,78 @@ namespace Darkroom
                 d[i] = Noise() * env * 0.6f;
             }
             return ToClip("draw_loop", d);
+        }
+
+        /// Short viewfinder beep.
+        AudioClip BuildBeep()
+        {
+            int n = (int)(SR * 0.07f);
+            var d = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)SR;
+                float env = Mathf.Sin(Mathf.Clamp01(t / 0.07f) * Mathf.PI);
+                d[i] = Mathf.Sin(2f * Mathf.PI * 900f * t) * env * 0.5f;
+            }
+            return ToClip("beep", d);
+        }
+
+        /// 600 + 900 + 1200 Hz arpeggiated into a held chord: the checkpoint
+        /// notes the player has collected all run, plus one new note on top.
+        AudioClip BuildFinaleChord()
+        {
+            const float dur = 2.2f;
+            int n = (int)(SR * dur);
+            var d = new float[n];
+            float[] freqs = { 600f, 900f, 1200f };
+            float[] starts = { 0f, 0.28f, 0.56f };
+            float[] amps = { 0.36f, 0.30f, 0.24f };
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)SR;
+                float v = 0f;
+                for (int k = 0; k < 3; k++)
+                {
+                    if (t < starts[k]) continue;
+                    float u = t - starts[k];
+                    float attack = Mathf.Clamp01(u / 0.18f);
+                    float release = Mathf.Clamp01((dur - t) / 0.7f);
+                    v += amps[k] * Mathf.Sin(2f * Mathf.PI * freqs[k] * u) * attack * release;
+                }
+                d[i] = Mathf.Clamp(v, -1f, 1f) * 0.6f;
+            }
+            return ToClip("finale_chord", d);
+        }
+
+        /// 2 s loop with integer cycle counts (82 / 82.5 / 164 Hz -> 164 /
+        /// 165 / 328 cycles): seamless seam, 0.5 Hz beat = a slow throb.
+        AudioClip BuildPedalLoop()
+        {
+            int n = SR * 2;
+            var d = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)SR;
+                d[i] = (0.50f * Mathf.Sin(2f * Mathf.PI * 82f * t)
+                      + 0.35f * Mathf.Sin(2f * Mathf.PI * 82.5f * t)
+                      + 0.15f * Mathf.Sin(2f * Mathf.PI * 164f * t)) * 0.5f;
+            }
+            return ToClip("pedal", d);
+        }
+
+        /// Breathy band of filtered noise: rushing air for the long drop.
+        AudioClip BuildWindLoop()
+        {
+            int n = SR;
+            var d = new float[n];
+            float lp = 0f, lp2 = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                lp += (Noise() - lp) * 0.12f;
+                lp2 += (lp - lp2) * 0.12f;
+                d[i] = Mathf.Clamp((lp - lp2) * 3.2f, -1f, 1f);
+            }
+            return ToClip("wind", d);
         }
 
         /// Barely audible lowpassed noise floor.

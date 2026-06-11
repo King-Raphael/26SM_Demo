@@ -31,7 +31,7 @@ namespace Darkroom
                 foreach (var p in room.pickups)
                     Pickup(p.ability, new Vector2(p.cx, p.cy));
                 foreach (var c in room.checkpoints)
-                    CheckpointAt(c.name, new Vector2(c.cx, c.cy));
+                    CheckpointAt(c.name, new Vector2(c.cx, c.cy), c.caption, r);
                 foreach (var h in room.hints)
                     Hint(h.text, new Vector2(h.cx, h.cy), new Vector2(h.w, h.h));
                 foreach (var x in room.exits)
@@ -48,6 +48,14 @@ namespace Darkroom
                         Debug.LogError("[LevelBuilder] Sensor " + s.name + " references missing door " + s.doorId);
                     Sensor(s.name, new Vector2(s.cx, s.cy), door);
                 }
+            }
+
+            // Room 9 set piece: the corridor blackout (rebuilt with the level)
+            if (last >= 9)
+            {
+                var blackout = new GameObject("R9_Blackout");
+                blackout.transform.SetParent(_root, false);
+                blackout.AddComponent<ScriptedBlackout>();
             }
 
             // demo truncation: containment wall + notice
@@ -276,7 +284,7 @@ namespace Darkroom
             return go;
         }
 
-        public static GameObject CheckpointAt(string name, Vector2 c)
+        public static GameObject CheckpointAt(string name, Vector2 c, string caption = "", int roomIndex = -1)
         {
             var go = NewTrigger(name, c, new Vector2(1f, 2f));
 
@@ -291,7 +299,9 @@ namespace Darkroom
             sr.color = new Color(0.5f, 0.5f, 0.5f, 0.8f);
             sr.sortingOrder = VisualFactory.OrderExposure - 2;
 
-            go.AddComponent<Checkpoint>();
+            var cp = go.AddComponent<Checkpoint>();
+            cp.Caption = caption;
+            cp.RoomIndex = roomIndex;
             return go;
         }
 

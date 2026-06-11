@@ -44,9 +44,28 @@ namespace Darkroom
 
         float _lastFallSpeed;
 
+        // finale pose lock: while set, the per-frame sprite/flip writes pause
+        Sprite _poseLock;
+        bool _poseFaceLeft;
+
+        public void SetPose(Sprite pose, bool faceLeft)
+        {
+            _poseLock = pose;
+            _poseFaceLeft = faceLeft;
+        }
+
+        public void ClearPose() { _poseLock = null; }
+
         void Update()
         {
             if (PauseController.IsPaused) return;
+            if (_poseLock != null)
+            {
+                _sr.sprite = _poseLock;
+                _sr.flipX = _poseFaceLeft;
+                _visual.localScale = new Vector3(_developScale, _developScale, 1f);
+                return;
+            }
             float vx = _pc.Body.linearVelocity.x;
             float vy = _pc.Body.linearVelocity.y;
             bool grounded = _pc.IsGrounded;

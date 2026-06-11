@@ -24,6 +24,18 @@ namespace Darkroom
         Color _targetColor = NormalColor;
         float _targetIntensity = NormalIntensity;
 
+        // scripted override (Room 9 blackout): wins over the exposure grading
+        Color _overrideColor;
+        float _overrideIntensity = -1f;
+
+        public void SetOverride(Color c, float intensity)
+        {
+            _overrideColor = c;
+            _overrideIntensity = intensity;
+        }
+
+        public void ClearOverride() { _overrideIntensity = -1f; }
+
         void Awake()
         {
             Instance = this;
@@ -66,9 +78,12 @@ namespace Darkroom
 
         void Update()
         {
+            bool over = _overrideIntensity >= 0f;
+            var tc = over ? _overrideColor : _targetColor;
+            float ti = over ? _overrideIntensity : _targetIntensity;
             float k = Time.deltaTime * LerpSpeed;
-            _global.color = Color.Lerp(_global.color, _targetColor, k);
-            _global.intensity = Mathf.Lerp(_global.intensity, _targetIntensity, k);
+            _global.color = Color.Lerp(_global.color, tc, k);
+            _global.intensity = Mathf.Lerp(_global.intensity, ti, k);
         }
 
         /// Point light helper used by the builders.
