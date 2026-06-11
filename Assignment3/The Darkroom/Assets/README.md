@@ -77,6 +77,7 @@ Open the project in Unity 6000.4 LTS, open `Assets/Scenes/Level01.unity` (any sc
 - **Esc pause / M mute** were added after the Definition of Done passed (the spec's "no menus" rule applied until then); the pause is a single overlay with a controls recap, not a menu system.
 - **Death/respawn are themed**: the image "burns" into a grain burst on death and re-develops (alpha/scale ease-in) at the checkpoint.
 - **Room 4 ledge raised to top 9.0** (spec said 7.5): with the spec's jump math a single stroke (max launch ~5.8, apex ~8.3) cleared 7.5, so the room's intended *two* fixes were never required. Room 5's entry (gate, gate ceiling, checkpoint, hint) moved up 1.5 with it; seams stay flush and Room 5 remains solvable as intended.
+- **Room 1 gap widened to 7.5** (spec: 4.5) and the three dark steps widened to 1.6: a running jump covers ~5.6 units (~6.3 with coyote time), so the spec's gap was directly jumpable and the room's one lesson — press 1 — could be skipped entirely. The revealed route is now easier than spec (step gaps 0.25–0.7), the skip is impossible.
 - **All five spec stretch goals are implemented**: switch/state audio, sparkle particles along strokes while drawing, faint flickering film-grain overlay, statue "crackle" flicker when an enemy freezes, and a replay timer (hidden until the first win; final time shown on the win screen).
 - Hint text says "arrow keys" instead of arrow glyphs (font glyph safety).
 - Layers: 6=World, 7=Strokes, 8=Player, 9=Triggers; Strokes collides with Player only (set in code at boot).

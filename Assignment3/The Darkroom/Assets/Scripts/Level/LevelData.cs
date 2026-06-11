@@ -116,11 +116,15 @@ namespace Darkroom
                 name = "R1_InvisibleSteps",
                 boxes = new[]
                 {
-                    new BoxDef("R1_Floor",    SG,  8f,    0f,   5f, 1f),
-                    new BoxDef("R1_DarkStepA",DP,  11.5f, 0.2f, 1f, 0.4f),
-                    new BoxDef("R1_DarkStepB",DP,  13.0f, 0.6f, 1f, 0.4f),
-                    new BoxDef("R1_DarkStepC",DP,  14.5f, 0.2f, 1f, 0.4f),
-                    new BoxDef("R1_Landing",  SG,  17.5f, 0f,   5f, 1f),
+                    // gap widened 4.5 -> 7.5 (a running jump covers ~5.6, with
+                    // coyote ~6.3 — the spec gap was directly skippable without
+                    // ever pressing 1); steps widened 1.0 -> 1.6 so the taught
+                    // route is easier than before once revealed
+                    new BoxDef("R1_Floor",    SG,  8f,     0f,   5f,   1f),
+                    new BoxDef("R1_DarkStepA",DP,  12.0f,  0.2f, 1.6f, 0.4f),
+                    new BoxDef("R1_DarkStepB",DP,  14.25f, 0.6f, 1.6f, 0.4f),
+                    new BoxDef("R1_DarkStepC",DP,  16.5f,  0.2f, 1.6f, 0.4f),
+                    new BoxDef("R1_Landing",  SG,  19f,    0f,   2f,   1f),
                 },
                 checkpoints = new[] { new CheckpointDef("CP_R1", 6.2f, 1.2f) },
                 hints = new[]
