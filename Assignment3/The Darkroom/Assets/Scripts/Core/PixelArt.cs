@@ -67,44 +67,67 @@ namespace Darkroom
             return Mathf.Lerp(Mathf.Lerp(a, b, fx), Mathf.Lerp(c, d, fx), fy);
         }
 
-        // ---------- world tiles (one tile = one world unit) ----------
+        // ---------- world tiles ----------
 
         static Sprite _ground, _darkPath, _barrier, _door;
         static Sprite _concrete, _brick, _lightCone, _coneShade;
 
-        /// Dark concrete with grime (cinematic restyle).
+        /// Photo texture from StreamingAssets (CC0, see README credits).
+        /// Returns null when the file is missing — callers fall back to procedural.
+        static Sprite LoadExternal(string file, float ppu)
+        {
+            try
+            {
+                string p = System.IO.Path.Combine(Application.streamingAssetsPath, file);
+                if (!System.IO.File.Exists(p)) return null;
+                var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                if (!tex.LoadImage(System.IO.File.ReadAllBytes(p))) return null;
+                tex.wrapMode = TextureWrapMode.Repeat;
+                tex.filterMode = FilterMode.Bilinear;
+                var s = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height),
+                    new Vector2(0.5f, 0.5f), ppu, 0, SpriteMeshType.FullRect);
+                s.name = file;
+                return s;
+            }
+            catch { return null; }
+        }
+
+        /// Concrete: external photo texture (tinted dark by the builder),
+        /// procedural noise fallback. 512 ppu => one 1K tile spans 2 units.
         public static Sprite ConcreteTile
         {
             get
             {
+                if (_concrete == null) _concrete = LoadExternal("concrete.jpg", 512f);
                 if (_concrete == null)
                     _concrete = MakeTile("ConcreteTile", 64, 64f, (x, y) =>
                     {
                         float n = ValueNoise(x / 8f, y / 8f, 11) * 0.6f + ValueNoise(x / 3f, y / 3f, 23) * 0.4f;
-                        float v = 0.075f + n * 0.035f;
+                        float v = 0.30f + n * 0.14f;
                         if (ValueNoise(x / 16f, y / 5f, 37) > 0.88f) v *= 0.7f; // grime streaks
                         byte g = (byte)(v * 255f);
-                        return new Color32(g, g, (byte)(g + 3), 255);
+                        return new Color32(g, g, (byte)Mathf.Min(255, g + 8), 255);
                     });
                 return _concrete;
             }
         }
 
-        /// Very dark brick wall with mortar lines.
+        /// Brick: external photo texture (tinted dark), procedural fallback.
         public static Sprite BrickTile
         {
             get
             {
+                if (_brick == null) _brick = LoadExternal("bricks.jpg", 512f);
                 if (_brick == null)
                     _brick = MakeTile("BrickTile", 64, 64f, (x, y) =>
                     {
                         int row = y / 16;
                         int xo = (row % 2) * 16;
                         bool mortar = (y % 16) < 2 || ((x + xo) % 32) < 2;
-                        if (mortar) return new Color32(0x0A, 0x0A, 0x0C, 255);
+                        if (mortar) return new Color32(0x20, 0x20, 0x24, 255);
                         float n = ValueNoise(x / 5f, y / 5f, 51);
-                        byte g = (byte)((0.085f + n * 0.03f) * 255f);
-                        return new Color32(g, g, (byte)(g + 2), 255);
+                        byte g = (byte)((0.32f + n * 0.10f) * 255f);
+                        return new Color32(g, g, (byte)Mathf.Min(255, g + 6), 255);
                     });
                 return _brick;
             }
@@ -194,19 +217,34 @@ namespace Darkroom
             }
         }
 
-        /// Deep blue with scattered star pixels.
+        /// Glowing cold-blue energy band: bright core line, soft vertical
+        /// falloff. Drawn stretched (not tiled) — it is a gradient.
         public static Sprite DarkPathTile
         {
             get
             {
                 if (_darkPath == null)
-                    _darkPath = MakeTile("DarkPathTile", 12, 12f, (x, y) =>
-                    {
-                        int n = (x * 5 + y * 3) % 17;
-                        if (n == 0) return C(0x7B92D8);
-                        if (n == 9) return C(0x2F3D74);
-                        return C(0x3A4A8C);
-                    });
+                {
+                    int w = 16, h = 64;
+                    var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+                    tex.filterMode = FilterMode.Bilinear;
+                    tex.wrapMode = TextureWrapMode.Repeat;
+                    var px = new Color32[w * h];
+                    for (int y = 0; y < h; y++)
+                        for (int x = 0; x < w; x++)
+                        {
+                            float dy = Mathf.Abs(y - h / 2f) / (h / 2f);
+                            float core = Mathf.Pow(Mathf.Max(0f, 1f - dy), 2.4f);
+                            var col = Color.Lerp(new Color(0.34f, 0.45f, 0.85f), new Color(0.86f, 0.92f, 1f), core);
+                            px[y * w + x] = new Color32(
+                                (byte)(col.r * 255f), (byte)(col.g * 255f), (byte)(col.b * 255f),
+                                (byte)(Mathf.Clamp01(0.25f + core * 0.75f) * 255f));
+                        }
+                    tex.SetPixels32(px);
+                    tex.Apply();
+                    _darkPath = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f), h, 0, SpriteMeshType.FullRect);
+                    _darkPath.name = "DarkPathBand";
+                }
                 return _darkPath;
             }
         }

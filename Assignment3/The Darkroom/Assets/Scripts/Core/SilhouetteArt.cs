@@ -146,12 +146,26 @@ namespace Darkroom
         static Sprite Blob(string name, Color32 body, Color32 eye, bool eyesOpen)
         {
             var b = new Buf(48, 48);
-            // soft-edged squashed disc
-            for (int y = 0; y < 48; y++)
+
+            // awake: dim red aura behind the creature
+            if (eyesOpen)
+                for (int y = 0; y < 48; y++)
+                    for (int x = 0; x < 48; x++)
+                    {
+                        float dx = (x - 23.5f) / 24f;
+                        float dy = (y - 21f) / 23f;
+                        float r = Mathf.Sqrt(dx * dx + dy * dy);
+                        if (r < 1f)
+                            b.Px[y * 48 + x] = new Color32(0x70, 0x12, 0x12,
+                                (byte)(Mathf.Pow(1f - r, 2f) * 110f));
+                    }
+
+            // crouched shade: squashed disc with a flat bottom
+            for (int y = 4; y < 48; y++)
                 for (int x = 0; x < 48; x++)
                 {
-                    float dx = (x - 23.5f) / 22f;
-                    float dy = (y - 22f) / 20f;
+                    float dx = (x - 23.5f) / 21f;
+                    float dy = (y - 19f) / 17f;
                     float r = Mathf.Sqrt(dx * dx + dy * dy);
                     if (r < 1f)
                     {
@@ -159,18 +173,21 @@ namespace Darkroom
                         b.Px[y * 48 + x] = new Color32(body.r, body.g, body.b, a);
                     }
                 }
+            // little horn nubs
+            b.FillTaper(14f, 33f, 43f, 3.5f, 0.8f, body);
+            b.FillTaper(33f, 33f, 43f, 3.5f, 0.8f, body);
 
             if (eyesOpen)
             {
-                b.FillEllipse(15f, 27f, 3.5f, 4f, eye);
-                b.FillEllipse(32f, 27f, 3.5f, 4f, eye);
-                b.FillRect(14f, 26f, 17f, 29f, Eye);
-                b.FillRect(31f, 26f, 34f, 29f, Eye);
+                b.FillEllipse(16f, 23f, 4f, 4.5f, eye);
+                b.FillEllipse(31f, 23f, 4f, 4.5f, eye);
+                b.FillRect(15f, 22f, 18f, 25f, Eye);
+                b.FillRect(30f, 22f, 33f, 25f, Eye);
             }
             else
             {
-                b.FillRect(11f, 26f, 19f, 28f, eye);
-                b.FillRect(28f, 26f, 36f, 28f, eye);
+                b.FillRect(12f, 22f, 20f, 24f, eye);
+                b.FillRect(27f, 22f, 35f, 24f, eye);
             }
 
             return b.ToSprite(name, 60f);

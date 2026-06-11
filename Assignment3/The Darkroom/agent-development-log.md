@@ -348,4 +348,30 @@ Major presentation refactor (~15 files), new ability gate, level-geometry fix, v
 Offline compile clean. Awaiting the student's visual check against the mockups (lighting/readability constants may need tuning); external CC0 assets (font/textures/glow sprites) offered as a follow-up pending download approval.
 
 ### Student Follow-up
+Playtested with two screenshots and gave precise visual notes (next entry).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 14 — Raw Interaction Log
+
+**Time:** 2026-06-11 ~14:10
+**Development Stage:** Visual tuning from playtest screenshots (M9.1)
+**Current Goal:** Act on the student's screenshot review of the restyle
+
+### Student Prompt
+Two in-game screenshots with notes: Normal is a bit too dark; the UI is too busy; external assets are approved ("外部素材都可以加入"); the backdrop is too monotonous; walls/paths/enemies deserve better styles; the film grain in Under/Normal is far too heavy.
+
+### Agent Response Summary
+Lighting: Normal global 0.75 → 0.95, lamp lights 0.5/4.2 → 0.6/5.0. Grain: alpha 0.05 → 0.022, sparser/softer (bilinear, larger tiling, slower flicker). UI declutter: removed the state badge box (the highlighted slider label + tutorial card carry it), objectives now peek for 6 s on room entry then fade, control hints shrunk to 17 px at 65% alpha with condensed wording. External assets integrated with the student's approval: JetBrains Mono (OFL) bundled as the UI font, Poly Haven CC0 concrete/brick 1K textures loaded from StreamingAssets at runtime with procedural fallbacks (photo textures tinted down; procedural tiles re-baked brighter to match). DarkPath restyled from noise tiles to a stretched glowing energy band (bright core, soft falloff). Enemy silhouette redrawn: crouched shade with horn nubs, flat bottom, and a dim red aura + bright eyes when awake. Backdrop enriched: near-black brick patches plus pipes with brackets and elbows, crate stacks, chains, barrels, at higher density.
+
+### Development Action
+Visual tuning pass + first external assets (font, two textures) with credits in README.
+
+### Files / Mechanics Changed
+`LightDirector.cs`, `HUDController.cs`, `PixelArt.cs` (LoadExternal, DarkPath band, brighter fallbacks), `LevelBuilder.cs` (DarkPath band rig, ground tinting), `SilhouetteArt.cs` (enemy), `BackdropBuilder.cs` (new prop types), `README.md` (credits), `Assets/Resources/Fonts/Mono.ttf`, `Assets/StreamingAssets/{concrete,bricks}.jpg`.
+
+### Immediate Result
+Offline compile clean; pushed for the student's next visual check.
+
+### Student Follow-up
 (Pending playtest.)

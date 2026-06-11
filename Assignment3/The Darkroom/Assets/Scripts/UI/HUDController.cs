@@ -23,7 +23,6 @@ namespace Darkroom
         RectTransform _sliderGroup, _knob;
         Vector2 _sliderBasePos;
         readonly Text[] _stateLabels = new Text[3];
-        Text _badgeText;
         GameObject _lockUnder, _lockOver;
         static readonly float[] KnobSlots = { -120f, 0f, 120f };
 
@@ -31,9 +30,11 @@ namespace Darkroom
         GameObject _trailsGroup;
         readonly Image[] _trailTicks = new Image[3];
 
-        // top-left room info
+        // top-left room info (objectives fade out after room entry)
         Text _roomTitle;
         readonly Text[] _objLines = new Text[2];
+        CanvasGroup _objGroup;
+        Coroutine _objCo;
         int _shownRoom = -1;
 
         // top-right controls (tutorial only)
@@ -197,9 +198,9 @@ namespace Darkroom
             Stretch(grainRT);
             _grain = grainRT.gameObject.AddComponent<RawImage>();
             _grain.texture = _grainTex[0];
-            _grain.color = new Color(1f, 1f, 1f, 0.05f);
+            _grain.color = new Color(1f, 1f, 1f, 0.022f);
             _grain.raycastTarget = false;
-            _grain.uvRect = new Rect(0f, 0f, 15f, 8.44f);
+            _grain.uvRect = new Rect(0f, 0f, 8f, 4.5f);
             StartCoroutine(GrainFlicker());
 
             var vigRT = NewRect("Vignette", CanvasRoot);
@@ -303,14 +304,8 @@ namespace Darkroom
 
             _lockUnder = BuildMiniLock(_sliderGroup, new Vector2(KnobSlots[0] - 62f, -64f));
             _lockOver = BuildMiniLock(_sliderGroup, new Vector2(KnobSlots[2] + 50f, -64f));
-
-            var badge = NewRect("Badge", _sliderGroup);
-            Place(badge, new Vector2(0.5f, 1f), new Vector2(0f, -88f), new Vector2(230f, 34f));
-            var bg = NewImage("Bg", badge, PanelBg);
-            Stretch(bg.rectTransform);
-            AddBorder(badge, PanelBorder);
-            _badgeText = NewText("BadgeText", badge, "NORMAL", 20, TextBright, TextAnchor.MiddleCenter);
-            Stretch(_badgeText.rectTransform);
+            // (no state badge — the highlighted label is enough; the tutorial
+            // card spells the state out while it still needs explaining)
         }
 
         GameObject BuildMiniLock(Transform parent, Vector2 pos)
@@ -341,21 +336,33 @@ namespace Darkroom
 
         void BuildRoomInfo()
         {
-            _roomTitle = NewText("RoomTitle", CanvasRoot, "", 26, TextBright, TextAnchor.MiddleLeft);
-            Place(_roomTitle.rectTransform, new Vector2(0f, 1f), new Vector2(40f, -40f), new Vector2(800f, 34f));
+            _roomTitle = NewText("RoomTitle", CanvasRoot, "", 24, TextBright, TextAnchor.MiddleLeft);
+            Place(_roomTitle.rectTransform, new Vector2(0f, 1f), new Vector2(40f, -40f), new Vector2(800f, 32f));
+            var objRT = NewRect("Objectives", CanvasRoot);
+            Place(objRT, new Vector2(0f, 1f), new Vector2(42f, -74f), new Vector2(800f, 60f));
+            _objGroup = objRT.gameObject.AddComponent<CanvasGroup>();
             for (int i = 0; i < 2; i++)
             {
-                _objLines[i] = NewText("Objective" + i, CanvasRoot, "", 20, new Color(0.62f, 0.62f, 0.60f, 1f), TextAnchor.MiddleLeft);
-                Place(_objLines[i].rectTransform, new Vector2(0f, 1f), new Vector2(42f, -78f - i * 30f), new Vector2(800f, 26f));
+                _objLines[i] = NewText("Objective" + i, objRT, "", 19, new Color(0.62f, 0.62f, 0.60f, 1f), TextAnchor.MiddleLeft);
+                Place(_objLines[i].rectTransform, new Vector2(0f, 1f), new Vector2(0f, -i * 28f), new Vector2(800f, 26f));
             }
+        }
+
+        IEnumerator ObjectivesPeek()
+        {
+            _objGroup.alpha = 1f;
+            yield return new WaitForSeconds(6f);
+            yield return FadeGroup(_objGroup, 0f, 1.2f);
+            _objCo = null;
         }
 
         void BuildControlsBlock()
         {
-            _controlsText = NewText("Controls", CanvasRoot, "", 20, new Color(0.72f, 0.72f, 0.70f, 1f), TextAnchor.UpperRight);
-            _controlsText.lineSpacing = 1.5f;
-            Place(_controlsText.rectTransform, new Vector2(1f, 1f), new Vector2(-36f, -36f), new Vector2(560f, 130f));
+            _controlsText = NewText("Controls", CanvasRoot, "", 17, new Color(0.72f, 0.72f, 0.70f, 1f), TextAnchor.UpperRight);
+            _controlsText.lineSpacing = 1.45f;
+            Place(_controlsText.rectTransform, new Vector2(1f, 1f), new Vector2(-36f, -36f), new Vector2(480f, 120f));
             _controlsGroup = _controlsText.gameObject.AddComponent<CanvasGroup>();
+            _controlsGroup.alpha = 0.65f; // present but quiet
             RebuildControls();
         }
 
@@ -480,6 +487,8 @@ namespace Darkroom
                 _roomTitle.text = "ROOM " + room + " : " + def.title;
                 for (int i = 0; i < 2; i++)
                     _objLines[i].text = i < def.objectives.Length ? "○ " + def.objectives[i] : "";
+                if (_objCo != null) StopCoroutine(_objCo);
+                _objCo = StartCoroutine(ObjectivesPeek()); // show, then get out of the way
             }
 
             // controls block retires after the tutorial rooms
@@ -532,7 +541,6 @@ namespace Darkroom
         {
             for (int i = 0; i < 3; i++)
                 _stateLabels[i].color = (int)e == i ? TextBright : TextDim;
-            _badgeText.text = BadgeNames[(int)e];
         }
 
         IEnumerator MoveKnob(float targetX)
@@ -689,12 +697,12 @@ namespace Darkroom
         void RebuildControls()
         {
             var gm = GameManager.Instance;
-            string s = "MOVE : A/D or ←→      JUMP : SPACE";
+            string s = "A/D ←→ move · SPACE jump";
             if (gm != null && (gm.HasNegative || gm.HasFlash))
-                s += "\n[1][2][3] or [Q]/[E] : CHANGE EXPOSURE";
+                s += "\n1/2/3 · Q/E exposure";
             if (gm != null && gm.HasShutter)
-                s += "\nHOLD [SHIFT] : DRAW TRAIL\nRELEASE : FIX TRAIL";
-            s += "\n[ESC] : PAUSE      [R] : RETRY";
+                s += "\nhold SHIFT draw · release fix";
+            s += "\nESC pause · R retry";
             _controlsText.text = s;
         }
 
@@ -828,12 +836,12 @@ namespace Darkroom
         {
             var tex = new Texture2D(128, 128, TextureFormat.RGBA32, false);
             tex.wrapMode = TextureWrapMode.Repeat;
-            tex.filterMode = FilterMode.Point;
+            tex.filterMode = FilterMode.Bilinear; // soft, not gritty
             var rng = new System.Random(7000 + seed);
             var px = new Color32[128 * 128];
             for (int i = 0; i < px.Length; i++)
             {
-                float a = Mathf.Pow((float)rng.NextDouble(), 7f);
+                float a = Mathf.Pow((float)rng.NextDouble(), 10f); // sparse
                 px[i] = new Color32(255, 255, 255, (byte)(a * 255f));
             }
             tex.SetPixels32(px);
@@ -843,13 +851,13 @@ namespace Darkroom
 
         IEnumerator GrainFlicker()
         {
-            var wait = new WaitForSeconds(0.09f);
+            var wait = new WaitForSeconds(0.12f);
             int i = 0;
             while (true)
             {
                 i = (i + 1) % _grainTex.Length;
                 _grain.texture = _grainTex[i];
-                _grain.uvRect = new Rect(Random.value, Random.value, 15f, 8.44f);
+                _grain.uvRect = new Rect(Random.value, Random.value, 8f, 4.5f);
                 yield return wait;
             }
         }
@@ -898,7 +906,7 @@ namespace Darkroom
             _bubbleAnchor = null;
             _shownRoom = -1;
             _controlsGone = false;
-            _controlsGroup.alpha = 1f;
+            _controlsGroup.alpha = 0.65f;
             RebuildControls();
             if (_cardCo != null) { StopCoroutine(_cardCo); _cardCo = null; }
             _cardGroup.alpha = 0f;

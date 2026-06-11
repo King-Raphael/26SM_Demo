@@ -63,7 +63,7 @@ namespace Darkroom
             cone.sharedMaterial = VisualFactory.GlowMat;
 
             LightDirector.CreatePoint(go.transform, new Vector2(0f, -cord - 0.8f),
-                new Color(1f, 0.92f, 0.76f), 4.2f, 0.5f);
+                new Color(1f, 0.92f, 0.76f), 5f, 0.6f);
         }
 
         static SpriteRenderer Decoration(Transform parent, Vector3 localPos, Vector3 scale, Sprite sprite, Color color, int order)
@@ -94,15 +94,74 @@ namespace Darkroom
             float x = -11f;
             while (x < span)
             {
-                switch (_rng.Next(4))
+                // big near-black brick patches break up the empty wall
+                if (_rng.Next(3) == 0)
+                    BrickPatch(x - 1f, Range(0.5f, 4f), Range(6f, 12f), Range(4f, 8f), order - 2);
+
+                switch (_rng.Next(6))
                 {
                     case 0: HangingLine(x, Range(7f, 10.5f), order); break;
                     case 1: Shelf(x, Range(1.5f, 5.5f), order); break;
                     case 2: Enlarger(x, Range(1.5f, 4f), order); break;
-                    default: HangingLine(x, Range(5f, 8f), order); break;
+                    case 3: PipeRun(x, Range(6f, 11f), order); break;
+                    case 4: CrateStack(x, Range(0.8f, 3.5f), order); break;
+                    default: Chain(x, Range(7.5f, 11f), order); Barrel(x + 1.2f, Range(0.8f, 2.5f), order); break;
                 }
-                x += Range(7f, 13f);
+                x += Range(5f, 9f);
             }
+        }
+
+        static void BrickPatch(float x, float y, float w, float h, int order)
+        {
+            var go = new GameObject("BrickPatch");
+            go.transform.SetParent(_layer, false);
+            go.transform.localPosition = new Vector3(x + w / 2f, y + h / 2f, 0f);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = PixelArt.BrickTile;
+            sr.sharedMaterial = VisualFactory.SpriteMat;
+            sr.drawMode = SpriteDrawMode.Tiled;
+            sr.size = new Vector2(w, h);
+            sr.color = new Color(0.15f, 0.14f, 0.16f, 1f);
+            sr.sortingOrder = order;
+        }
+
+        static void PipeRun(float x, float y, int order)
+        {
+            float w = Range(5f, 9f);
+            var c = Tint();
+            Decor(x + w / 2f, y, w, 0.22f, c, order);                       // the pipe
+            for (float bx = x + 0.8f; bx < x + w; bx += 2.2f)
+                Decor(bx, y - 0.22f, 0.14f, 0.3f, c, order);                // brackets
+            if (_rng.Next(2) == 0)
+                Decor(x + w, y - 1.1f, 0.22f, 2.2f, c, order);              // elbow drop
+        }
+
+        static void CrateStack(float x, float y, int order)
+        {
+            int n = 2 + _rng.Next(2);
+            float yy = y;
+            for (int i = 0; i < n; i++)
+            {
+                float w = Range(0.9f, 1.4f);
+                Decor(x + Range(-0.2f, 0.2f), yy + w * 0.45f, w, w * 0.9f, Tint(), order);
+                yy += w * 0.9f;
+            }
+        }
+
+        static void Chain(float x, float topY, int order)
+        {
+            var c = Tint();
+            float len = Range(1.5f, 3.5f);
+            for (float d = 0f; d < len; d += 0.22f)
+                Decor(x, topY - d, 0.08f, 0.14f, c, order);
+        }
+
+        static void Barrel(float x, float y, int order)
+        {
+            var c = Tint();
+            Decor(x, y + 0.5f, 0.75f, 1.0f, c, order);
+            Decor(x, y + 0.78f, 0.78f, 0.06f, Tint(), order);               // hoops
+            Decor(x, y + 0.28f, 0.78f, 0.06f, Tint(), order);
         }
 
         static float Range(float a, float b) => a + (float)_rng.NextDouble() * (b - a);

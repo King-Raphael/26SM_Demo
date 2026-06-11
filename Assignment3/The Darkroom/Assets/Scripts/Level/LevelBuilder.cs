@@ -65,7 +65,53 @@ namespace Darkroom
 
         public static GameObject Box(string name, ExposureObjectType t, Vector2 c, Vector2 s)
         {
-            var go = NewTiledBox(name, c, s, TileFor(t, s), VisualFactory.OrderFor(t), Layers.World);
+            GameObject go;
+            if (t == ExposureObjectType.DarkPath)
+            {
+                // root stays unscaled (colliders/lights keep world units);
+                // only the gradient band child is stretched
+                go = new GameObject(name);
+                go.layer = Layers.World;
+                go.transform.SetParent(_root, false);
+                go.transform.position = new Vector3(c.x, c.y, 0f);
+
+                var band = new GameObject("Band");
+                band.transform.SetParent(go.transform, false);
+                band.transform.localScale = new Vector3(s.x, s.y, 1f);
+                var bsr = band.AddComponent<SpriteRenderer>();
+                bsr.sprite = PixelArt.DarkPathTile;
+                bsr.sharedMaterial = VisualFactory.GlowMat;
+                bsr.color = Color.white;
+                bsr.sortingOrder = VisualFactory.OrderFor(t);
+
+                var dbc = go.AddComponent<BoxCollider2D>();
+                dbc.size = s;
+                var deo = go.AddComponent<ExposureObject>();
+                deo.type = t;
+                deo.boxSize = s;
+                var dgsr = Halo(go.transform, new Vector2(s.x + 0.5f, s.y + 0.5f),
+                    new Color(0.36f, 0.46f, 0.78f, 0f), VisualFactory.OrderExposure - 1);
+                var dlight = LightDirector.CreatePoint(go.transform, Vector2.zero,
+                    new Color(0.45f, 0.56f, 0.90f), Mathf.Max(s.x, s.y) * 0.5f + 1.6f, 0f);
+                deo.OnAlphaApplied = a =>
+                {
+                    var bc2 = bsr.color; bc2.a = a; bsr.color = bc2;
+                    var c2 = dgsr.color; c2.a = a * 0.28f; dgsr.color = c2;
+                    dlight.intensity = a * 0.55f;
+                };
+                deo.Reapply();
+                return go;
+            }
+
+            go = NewTiledBox(name, c, s, TileFor(t, s), VisualFactory.OrderFor(t), Layers.World);
+            if (t == ExposureObjectType.StaticGround)
+            {
+                // photo textures are bright — tint them down into the dark
+                bool tall = s.y > s.x * 1.5f;
+                go.GetComponent<SpriteRenderer>().color = tall
+                    ? new Color(0.26f, 0.25f, 0.28f, 1f)
+                    : new Color(0.30f, 0.30f, 0.34f, 1f);
+            }
             var bc = go.AddComponent<BoxCollider2D>();
             bc.size = s;
 
@@ -87,20 +133,6 @@ namespace Darkroom
                 var eo = go.AddComponent<ExposureObject>();
                 eo.type = t;
                 eo.boxSize = s;
-                if (t == ExposureObjectType.DarkPath)
-                {
-                    go.GetComponent<SpriteRenderer>().sharedMaterial = VisualFactory.GlowMat;
-                    var gsr = Halo(go.transform, new Vector2(s.x + 0.5f, s.y + 0.5f),
-                        new Color(0.36f, 0.46f, 0.78f, 0f), VisualFactory.OrderExposure - 1);
-                    var light = LightDirector.CreatePoint(go.transform, Vector2.zero,
-                        new Color(0.45f, 0.56f, 0.90f), Mathf.Max(s.x, s.y) * 0.5f + 1.6f, 0f);
-                    eo.OnAlphaApplied = a =>
-                    {
-                        var c2 = gsr.color; c2.a = a * 0.28f; gsr.color = c2;
-                        light.intensity = a * 0.55f;
-                    };
-                    eo.Reapply();
-                }
             }
             return go;
         }

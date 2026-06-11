@@ -61,6 +61,16 @@ Open the project in Unity 6000.4 LTS, open `Assets/Scenes/Level01.unity` (any sc
 9. **The Drop** — the wall is a dead end. Stand on the dark hatch in Under and press 2: the floor you trusted ceases to exist. Fall. That's the way forward.
 10. **The Final Print** — reveal (Under), anchor, burn (Over), sensor, door, checkpoint; then dark-stroke to Anchor B, switch to Over (stroke dies, barrier opens, guard wakes), time the guard, enter the exit.
 
+## External assets (credits)
+
+| Asset | Source | License |
+|---|---|---|
+| `Assets/Resources/Fonts/Mono.ttf` (JetBrains Mono Regular) | github.com/JetBrains/JetBrainsMono | OFL-1.1 |
+| `Assets/StreamingAssets/concrete.jpg` (concrete_wall_004, 1K diffuse) | polyhaven.com | CC0 |
+| `Assets/StreamingAssets/bricks.jpg` (red_brick_03, 1K diffuse) | polyhaven.com | CC0 |
+
+Textures load at runtime from StreamingAssets (`PixelArt.LoadExternal`) and fall back to procedural tiles when missing. Everything else remains generated in code.
+
 ## Implementation notes / documented deviations
 
 - **URP 2D** template instead of the spec's built-in pipeline (project ships with URP; sprites + LineRenderer behave identically with the shared unlit material).

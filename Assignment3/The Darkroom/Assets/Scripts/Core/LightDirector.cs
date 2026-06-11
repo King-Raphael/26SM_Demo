@@ -15,8 +15,8 @@ namespace Darkroom
         static readonly Color NormalColor = new Color(0.93f, 0.95f, 1.0f);
         static readonly Color UnderColor = new Color(0.40f, 0.48f, 0.72f);
         static readonly Color OverColor = new Color(1.0f, 0.92f, 0.78f);
-        const float NormalIntensity = 0.75f;
-        const float UnderIntensity = 0.22f;
+        const float NormalIntensity = 0.95f;
+        const float UnderIntensity = 0.24f;
         const float OverIntensity = 1.25f;
         const float LerpSpeed = 6f;
 
