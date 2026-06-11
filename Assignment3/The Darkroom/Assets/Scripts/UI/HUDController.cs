@@ -16,7 +16,8 @@ namespace Darkroom
         Image _overlay, _whiteFlash, _blackFade;
         RawImage _grain, _vignette;
         Texture2D[] _grainTex;
-        Text _timerText;
+        Text _timerText, _mutedText;
+        GameObject _pausePanel;
         RectTransform _strip;
         Vector2 _stripBasePos;
         readonly Image[] _frameBorders = new Image[3];
@@ -205,6 +206,11 @@ namespace Darkroom
             _timerText = NewText("ReplayTimer", CanvasRoot, "", 24, new Color(0.73f, 0.73f, 0.73f, 1f), TextAnchor.MiddleRight);
             Place(_timerText.rectTransform, new Vector2(1f, 1f), new Vector2(-24f, -24f), new Vector2(220f, 36f));
 
+            _mutedText = NewText("Muted", CanvasRoot, "", 20, new Color(0.55f, 0.55f, 0.55f, 1f), TextAnchor.MiddleRight);
+            Place(_mutedText.rectTransform, new Vector2(1f, 1f), new Vector2(-24f, -58f), new Vector2(160f, 28f));
+
+            BuildPausePanel();
+
             // respawn fade + switch flash (topmost)
             _blackFade = NewImage("BlackFade", CanvasRoot, new Color(0f, 0f, 0f, 0f));
             Stretch(_blackFade.rectTransform);
@@ -259,6 +265,35 @@ namespace Darkroom
             tex.Apply();
             return tex;
         }
+
+        void BuildPausePanel()
+        {
+            var rt = NewRect("PausePanel", CanvasRoot);
+            Stretch(rt);
+            var dim = rt.gameObject.AddComponent<Image>();
+            dim.color = new Color(0f, 0f, 0f, 0.62f);
+            dim.raycastTarget = false;
+
+            var title = NewText("PauseTitle", rt, "PAUSED", 56, new Color(0.93f, 0.91f, 0.87f, 1f), TextAnchor.MiddleCenter);
+            Place(title.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 120f), new Vector2(600f, 80f));
+
+            var help = NewText("PauseHelp", rt,
+                "MOVE  A/D or arrows        JUMP  Space\n" +
+                "EXPOSURE  1 Under   2 Normal   3 Over        CYCLE  E / Q\n" +
+                "DRAW LIGHT  hold Shift, release to fix\n" +
+                "RESTART FROM CHECKPOINT  R        MUTE  M\n\n" +
+                "ESC  resume",
+                26, new Color(0.72f, 0.72f, 0.70f, 1f), TextAnchor.MiddleCenter);
+            help.lineSpacing = 1.5f;
+            Place(help.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -60f), new Vector2(1200f, 300f));
+
+            _pausePanel = rt.gameObject;
+            _pausePanel.SetActive(false);
+        }
+
+        public void ShowPause(bool paused) { _pausePanel.SetActive(paused); }
+
+        public void SetMuted(bool muted) { _mutedText.text = muted ? "MUTED" : ""; }
 
         Texture2D MakeGrainTexture(int seed)
         {

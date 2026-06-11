@@ -11,6 +11,13 @@ namespace Darkroom
         float _life, _age;
         Color _base;
 
+        /// A puff of particles (death grain-burst, respawn develop-in).
+        public static void Burst(Vector2 pos, Color color, int count)
+        {
+            for (int i = 0; i < count; i++)
+                Spawn(pos + Random.insideUnitCircle * 0.35f, color);
+        }
+
         public static void Spawn(Vector2 pos, Color color)
         {
             var go = new GameObject("Sparkle");

@@ -63,6 +63,7 @@ namespace Darkroom
 
         void Update()
         {
+            if (PauseController.IsPaused) return;
             if (!InputEnabled) { _moveX = 0f; _jumpBuffer = 0f; return; }
             _moveX = DarkroomInput.MoveAxis;
             if (DarkroomInput.JumpPressed) _jumpBuffer = JumpBufferTime;

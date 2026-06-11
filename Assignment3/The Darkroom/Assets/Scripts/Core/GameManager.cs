@@ -29,6 +29,7 @@ namespace Darkroom
         void Update()
         {
             if (Player == null) return;
+            if (PauseController.IsPaused) return;
             if (!HasWon) RunTime += Time.deltaTime;
 
             if (HasWon)
@@ -56,6 +57,7 @@ namespace Darkroom
             if ((p - CheckpointPos).sqrMagnitude < 0.0001f) return;
             CheckpointPos = p;
             if (HUDController.Instance != null) HUDController.Instance.CheckpointFlash();
+            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayCheckpoint();
         }
 
         public void Unlock(Ability a)
@@ -76,12 +78,25 @@ namespace Darkroom
         {
             IsRespawning = true;
             Player.InputEnabled = false;
+
+            // the image burns: grain burst, sprite gone, falling tone
+            var anim = Player.GetComponent<PlayerAnimator>();
+            StrokeSparkle.Burst(Player.transform.position, new Color(0.85f, 0.85f, 0.85f, 1f), 14);
+            if (anim != null) anim.SetVisible(false);
+            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayDeath();
+
             var hud = HUDController.Instance;
             if (hud != null) yield return hud.FadeBlack(true, 0.12f);
             OnRespawn?.Invoke();
             Player.Teleport(CheckpointPos);
             ExposureManager.Instance.ForceSet(Exposure.Normal);
             if (hud != null) yield return hud.FadeBlack(false, 0.12f);
+
+            // ...and re-develops at the checkpoint
+            if (anim != null) anim.PlayDevelopIn();
+            StrokeSparkle.Burst(Player.FeetPos, new Color(0.75f, 0.78f, 0.85f, 1f), 6);
+            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayDevelop();
+
             Player.InputEnabled = true;
             IsRespawning = false;
         }

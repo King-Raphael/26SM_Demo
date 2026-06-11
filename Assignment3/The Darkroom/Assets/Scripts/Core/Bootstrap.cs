@@ -27,6 +27,7 @@ namespace Darkroom
             managers.AddComponent<ExposureManager>();
             managers.AddComponent<AudioDirector>();
             managers.AddComponent<LightDirector>();
+            managers.AddComponent<PauseController>();
 
             HUDController.Build();
             BackdropBuilder.Build();
@@ -61,6 +62,9 @@ namespace Darkroom
             if (follow == null) follow = cam.gameObject.AddComponent<CameraFollow>();
             follow.Target = target;
             follow.Snap();
+
+            if (cam.GetComponent<DustMotes>() == null)
+                cam.gameObject.AddComponent<DustMotes>();
         }
     }
 }

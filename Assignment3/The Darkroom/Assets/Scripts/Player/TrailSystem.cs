@@ -48,6 +48,7 @@ namespace Darkroom
 
         void Update()
         {
+            if (PauseController.IsPaused) return;
             var gm = GameManager.Instance;
             var em = ExposureManager.Instance;
             if (gm == null || em == null) return;
@@ -68,6 +69,9 @@ namespace Darkroom
             {
                 FixActive();
             }
+
+            if (AudioDirector.Instance != null)
+                AudioDirector.Instance.SetDrawing(_active != null && canDraw);
         }
 
         Vector2 DrawPos => _player.FeetPos + new Vector2(0f, -FeetOffset);

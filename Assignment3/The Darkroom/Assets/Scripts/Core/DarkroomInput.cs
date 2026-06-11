@@ -29,6 +29,8 @@ namespace Darkroom
         public static bool CycleForwardPressed => K != null && K.eKey.wasPressedThisFrame;
         public static bool CycleBackPressed => K != null && K.qKey.wasPressedThisFrame;
         public static bool RestartPressed => K != null && K.rKey.wasPressedThisFrame;
+        public static bool PausePressed => K != null && K.escapeKey.wasPressedThisFrame;
+        public static bool MutePressed => K != null && K.mKey.wasPressedThisFrame;
 
         public static bool DrawHeld
         {

@@ -18,6 +18,8 @@ Open the project in Unity 6000.4 LTS, open `Assets/Scenes/Level01.unity` (any sc
 | Cycle exposure | E forward / Q backward | secondary; skips locked/jamming states |
 | Draw stroke | hold Shift (alt: hold L) | locked until the Shutter pickup; release to fix |
 | Restart from checkpoint | R | on the win screen: full restart |
+| Pause / resume | Esc | freezes time and audio; shows a controls recap |
+| Mute | M | toggles all audio |
 
 **Recommended hand layout:** right hand on arrow keys, left hand on 1/2/3 + Shift, thumb on Space. Switching exposure while moving must be physically comfortable — that's why 1/2/3 are primary.
 
@@ -71,7 +73,10 @@ Open the project in Unity 6000.4 LTS, open `Assets/Scenes/Level01.unity` (any sc
 - **The jam check tests strokes per segment**, not by whole-stroke AABB — an arc's bounding box covers space the line never touches and would refuse switches far away from the actual light. Stroke points are drawn 0.25 below the feet (more than the 0.07 edge radius) so a stroke drawn along the ground never protrudes above the floor, and a stroke drawn at the jump apex stays comfortably reachable by the next jump.
 - **The player's Rigidbody2D never sleeps** — sensors and standing-on-a-waking-enemy kills depend on `OnTriggerStay2D`, which Unity stops delivering for sleeping bodies.
 - **Full restart rebuilds the level in place** instead of reloading the scene (the bootstrap runs once per play session).
-- **Audio is procedurally synthesized** (no external assets): shutter click on every switch, low hum in Under, bright hiss in Over, dull jam click, pickup chime, win shutter (`AudioDirector`).
+- **Audio is procedurally synthesized** (no external assets, `AudioDirector`): shutter click on every switch, low hum in Under, bright hiss in Over, dull jam click, pickup chime, win shutter — plus footsteps, jump/land, death rip, develop-in swell, checkpoint notes, door rumble, a crackle loop while drawing, and a barely-audible room tone.
+- **Esc pause / M mute** were added after the Definition of Done passed (the spec's "no menus" rule applied until then); the pause is a single overlay with a controls recap, not a menu system.
+- **Death/respawn are themed**: the image "burns" into a grain burst on death and re-develops (alpha/scale ease-in) at the checkpoint.
+- **Room 4 ledge raised to top 9.0** (spec said 7.5): with the spec's jump math a single stroke (max launch ~5.8, apex ~8.3) cleared 7.5, so the room's intended *two* fixes were never required. Room 5's entry (gate, gate ceiling, checkpoint, hint) moved up 1.5 with it; seams stay flush and Room 5 remains solvable as intended.
 - **All five spec stretch goals are implemented**: switch/state audio, sparkle particles along strokes while drawing, faint flickering film-grain overlay, statue "crackle" flicker when an enemy freezes, and a replay timer (hidden until the first win; final time shown on the win screen).
 - Hint text says "arrow keys" instead of arrow glyphs (font glyph safety).
 - Layers: 6=World, 7=Strokes, 8=Player, 9=Triggers; Strokes collides with Player only (set in code at boot).

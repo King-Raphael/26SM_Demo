@@ -29,9 +29,15 @@ namespace Darkroom
             go.layer = Layers.Strokes;
             go.SetActive(false); // defer Awake/OnEnable until configured
 
+            // tapered ends: the pen pressure of light
+            var taper = new AnimationCurve(
+                new Keyframe(0f, 0.7f), new Keyframe(0.15f, 1f),
+                new Keyframe(0.85f, 1f), new Keyframe(1f, 0.7f));
+
             var lr = go.AddComponent<LineRenderer>();
             lr.useWorldSpace = true;
             lr.widthMultiplier = Width;
+            lr.widthCurve = taper;
             lr.sharedMaterial = VisualFactory.GlowMat;
             lr.sortingOrder = VisualFactory.OrderStroke;
             lr.numCapVertices = 4;
@@ -47,6 +53,7 @@ namespace Darkroom
             var glow = glowGO.AddComponent<LineRenderer>();
             glow.useWorldSpace = true;
             glow.widthMultiplier = Width * 2.8f;
+            glow.widthCurve = taper;
             glow.sharedMaterial = VisualFactory.GlowMat;
             glow.sortingOrder = VisualFactory.OrderStroke - 1;
             glow.numCapVertices = 4;

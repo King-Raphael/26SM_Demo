@@ -25,6 +25,7 @@ namespace Darkroom
             var c = _sr.color;
             c.a = 0.15f;
             _sr.color = c;
+            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayDoor();
         }
     }
 }

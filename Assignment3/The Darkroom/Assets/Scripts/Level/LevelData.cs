@@ -173,7 +173,9 @@ namespace Darkroom
                 boxes = new[]
                 {
                     new BoxDef("R4_Floor",     SG, 47f, 3f, 10f, 1f),
-                    new BoxDef("R4_HighLedge", SG, 56f, 7f, 5f,  1f),
+                    // top 9.0: above the single-stroke ceiling (max launch 5.81
+                    // -> apex 8.30), so the climb genuinely takes two fixes
+                    new BoxDef("R4_HighLedge", SG, 56f, 8.5f, 5f, 1f),
                 },
                 checkpoints = new[] { new CheckpointDef("CP_R4", 43f, 4.2f) },
                 hints = new[]
@@ -188,16 +190,18 @@ namespace Darkroom
                 name = "R5_BlownBridge",
                 boxes = new[]
                 {
-                    new BoxDef("R5_BrightGate",  BB, 59.5f, 9f,   0.5f, 3f),
-                    new BoxDef("R5_GateCeiling", SG, 59.5f, 11f,  3f,   0.4f),
-                    new BoxDef("R5_EnemyPerch",  SG, 64f,   6.5f, 1.6f, 0.5f),
-                    new BoxDef("R5_FarLedge",    SG, 70.5f, 7f,   5f,   1f),
+                    // entry raised +1.5 with the R4 ledge (gate bottom stays
+                    // flush with the ledge top at 9.0)
+                    new BoxDef("R5_BrightGate",  BB, 59.5f, 10.5f, 0.5f, 3f),
+                    new BoxDef("R5_GateCeiling", SG, 59.5f, 12.5f, 3f,   0.4f),
+                    new BoxDef("R5_EnemyPerch",  SG, 64f,   6.5f,  1.6f, 0.5f),
+                    new BoxDef("R5_FarLedge",    SG, 70.5f, 7f,    5f,   1f),
                 },
                 enemies = new[] { new EnemyDef("R5_PatrolEnemy", 64f, 7.3f, 0.6f, 1.0f) },
-                checkpoints = new[] { new CheckpointDef("CP_R5", 57.5f, 8.2f) },
+                checkpoints = new[] { new CheckpointDef("CP_R5", 57.5f, 9.7f) },
                 hints = new[]
                 {
-                    new HintDef("In OVER your light is bright — and so are their eyes. Fix your bridge midair.", 57.5f, 8.6f, 3f, 2f),
+                    new HintDef("In OVER your light is bright — and so are their eyes. Fix your bridge midair.", 57.5f, 10.1f, 3f, 2f),
                 },
             },
 
