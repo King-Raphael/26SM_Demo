@@ -11,6 +11,8 @@ namespace Darkroom
 
         public bool HasFlash { get; private set; }
         public bool HasShutter { get; private set; }
+        /// The "negative" unlocks Underexposed (first ability gate in the tutorial chain).
+        public bool HasNegative { get; private set; }
         public bool IsRespawning { get; private set; }
         public bool HasWon { get; private set; }
         /// Set on the first win; survives FullRestart. Unlocks the replay timer HUD.
@@ -62,7 +64,9 @@ namespace Darkroom
 
         public void Unlock(Ability a)
         {
-            if (a == Ability.Flash) HasFlash = true; else HasShutter = true;
+            if (a == Ability.Flash) HasFlash = true;
+            else if (a == Ability.Shutter) HasShutter = true;
+            else HasNegative = true;
             if (HUDController.Instance != null) HUDController.Instance.OnAbilityUnlocked(a);
             if (AudioDirector.Instance != null) AudioDirector.Instance.PlayPickup();
         }
@@ -121,6 +125,7 @@ namespace Darkroom
             HasWon = false;
             HasFlash = false;
             HasShutter = false;
+            HasNegative = false;
             RunTime = 0f;
             OnRespawn?.Invoke();
             var old = GameObject.Find("_Level");

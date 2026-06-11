@@ -323,3 +323,29 @@ Committed and pushed to GitHub alongside the project.
 
 ### Student Follow-up
 (Pending — say "reflect on this stage" any time to generate the first Reflection Log.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 13 — Raw Interaction Log
+
+**Time:** 2026-06-11 ~13:00
+**Development Stage:** Cinematic art-direction overhaul (Milestone 9)
+**Current Goal:** Replace the pixel-art look with the student's concept-art style
+
+### Student Prompt
+Provided three concept mockups (camera-viewfinder UI with exposure slider and REC, soft silhouette girl, industrial darkroom under hanging lamp light-pools, ribbon-like light trails, sepia overexposure): "这三张是我之前做的示意图，我希望做成这样的风格而不是单纯的像素风". After reviewing the agent's first plan, the student **rejected it with four revisions**: REC/viewfinder should appear only while drawing; control hints and the exposure card should exist only during the opening tutorial; external polished assets are now allowed (not everything procedural); Room 6's sensor could be skipped entirely; and the opening should introduce abilities one at a time (Under first, then Over).
+
+### Agent Response Summary
+Re-planned per the revisions, then implemented: a full camera-UI rebuild (monospace font via OS Menlo with bundled-font priority, exposure slider + state badge replacing the spec's film-strip HUD, room title + objectives, progressive control hints that retire after Room 3, tutorial-only exposure card, world-anchored hint bubbles, viewfinder corners + blinking REC gated on the shutter being open); a new **Negative** pickup so Underexposed itself is locked at start (tutorial chain: move → negative → flash → shutter); soft silhouette characters drawn from shapes (`SilhouetteArt`, bilinear — girl with glowing eye, shadow-blob enemies); environment restyle (value-noise concrete/brick, catch-light platform edges, hanging cone lamps with real light pools, fog-glass barriers, lens-panel doors, glowing white exit doorway); soft-glow particles everywhere; cinematic grading (Normal 0.75 cool, Under 0.22 cold, Over warm sepia 1.25). Verified the Room 6 skip mathematically (spec ceiling top 6.6 flush with the 6.55 anchor) and fixed it by raising the door to y 3.5–8.0 with the ceiling at 8.2–8.6 spanning the anchor; noted that extreme 3-stroke stacking remains as accepted speedrun tech.
+
+### Development Action
+Major presentation refactor (~15 files), new ability gate, level-geometry fix, validator updated (3 pickups, room titles).
+
+### Files / Mechanics Changed
+`HUDController.cs` (rewritten), `FontLoader.cs`, `SilhouetteArt.cs` (new), `PixelArt.cs` (noise tiles, lamp cone, disc/soft-glow), `LevelData.cs` (titles/objectives, Negative pickup, R6 door), `LevelBuilder.cs`, `BackdropBuilder.cs` (lamps), `ExposureManager.cs`, `GameManager.cs`, `AbilityPickup.cs`, `PlayerAnimator.cs`, `LightSensitiveEnemy.cs`, `SensorDoor.cs`, `TrailSystem.cs`, `TrailStroke.cs`, `StrokeSparkle.cs`, `LightDirector.cs`, `VisualFactory.cs`, `DarkroomValidator.cs`.
+
+### Immediate Result
+Offline compile clean. Awaiting the student's visual check against the mockups (lighting/readability constants may need tuning); external CC0 assets (font/textures/glow sprites) offered as a follow-up pending download approval.
+
+### Student Follow-up
+(Pending playtest.)

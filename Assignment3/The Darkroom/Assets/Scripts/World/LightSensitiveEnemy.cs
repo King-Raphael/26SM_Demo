@@ -32,36 +32,10 @@ namespace Darkroom
         static void EnsureSprites()
         {
             if (_sAsleep != null) return;
-            string[] body =
-            {
-                "....XXXX....",
-                "..XXXXXXXX..",
-                ".XXXXXXXXXX.",
-                ".XXXXXXXXXX.",
-                "XXEEXXXXEEXX",
-                "XXEEXXXXEEXX",
-                "XXXXXXXXXXXX",
-                "XXXXXXXXXXXX",
-                ".XXXXXXXXXX.",
-                ".XXXXXXXXXX.",
-                "..XXXXXXXX..",
-                "....XXXX....",
-            };
-            _sAsleep = PixelArt.FromMap("EnemyAsleep", body, new Dictionary<char, Color32>
-            {
-                { 'X', new Color32(0x44, 0x44, 0x44, 0xFF) },
-                { 'E', new Color32(0x2B, 0x2B, 0x2B, 0xFF) },   // closed eyes
-            }, 15f);
-            _sAwake = PixelArt.FromMap("EnemyAwake", body, new Dictionary<char, Color32>
-            {
-                { 'X', new Color32(0x8B, 0x1A, 0x1A, 0xFF) },
-                { 'E', new Color32(0xFF, 0xC4, 0xC4, 0xFF) },   // glowing eyes
-            }, 15f);
-            _sCrackle = PixelArt.FromMap("EnemyCrackle", body, new Dictionary<char, Color32>
-            {
-                { 'X', new Color32(0x6A, 0x6A, 0x6A, 0xFF) },
-                { 'E', new Color32(0x4A, 0x4A, 0x4A, 0xFF) },
-            }, 15f);
+            // soft shadow-blob silhouettes (concept-art style)
+            _sAsleep = SilhouetteArt.EnemyAsleep;
+            _sAwake = SilhouetteArt.EnemyAwake;
+            _sCrackle = SilhouetteArt.EnemyCrackle;
         }
 
         public void Init(float patrolRange, float patrolSpeed)

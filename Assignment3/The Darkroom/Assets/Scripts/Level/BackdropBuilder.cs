@@ -15,11 +15,69 @@ namespace Darkroom
             if (GameObject.Find("_Backdrop") != null) return;
             var root = new GameObject("_Backdrop").transform;
             // far layer: bigger, darker, slower
-            BuildLayer(root, "Far", 0.25f, -16, new Color(0.080f, 0.080f, 0.082f),
-                new Color(0.098f, 0.096f, 0.098f), 140f, 11);
+            BuildLayer(root, "Far", 0.25f, -16, new Color(0.050f, 0.050f, 0.054f),
+                new Color(0.066f, 0.064f, 0.068f), 140f, 11);
             // near layer: smaller, slightly lighter, faster
-            BuildLayer(root, "Near", 0.5f, -12, new Color(0.105f, 0.103f, 0.105f),
-                new Color(0.135f, 0.130f, 0.132f), 98f, 23);
+            BuildLayer(root, "Near", 0.5f, -12, new Color(0.070f, 0.068f, 0.072f),
+                new Color(0.092f, 0.088f, 0.092f), 98f, 23);
+            BuildLamps(root);
+        }
+
+        /// Hanging cone lamps with light pools — world-fixed (no parallax),
+        /// their Light2Ds genuinely light the play space.
+        static void BuildLamps(Transform root)
+        {
+            var lamps = new GameObject("Lamps").transform;
+            lamps.SetParent(root, false);
+            var rng = new System.Random(77);
+            float x = -3f;
+            while (x < 174f)
+            {
+                Lamp(lamps, x, 10.6f + (float)rng.NextDouble() * 1.6f, rng);
+                x += 10f + (float)rng.NextDouble() * 5f;
+            }
+            // the Room 9 corridor gets its own low lamps
+            Lamp(lamps, 130f, 1.4f, rng);
+            Lamp(lamps, 137f, 1.4f, rng);
+        }
+
+        static void Lamp(Transform parent, float x, float topY, System.Random rng)
+        {
+            var go = new GameObject("Lamp");
+            go.transform.SetParent(parent, false);
+            go.transform.position = new Vector3(x, topY, 0f);
+
+            float cord = 0.8f + (float)rng.NextDouble() * 1.4f;
+            var cordSr = Decoration(go.transform, new Vector3(0f, -cord / 2f, 0f),
+                new Vector3(0.045f, cord, 1f), VisualFactory.WhiteSprite, new Color(0.08f, 0.08f, 0.09f, 1f), -6);
+
+            var shade = Decoration(go.transform, new Vector3(0f, -cord - 0.55f, 0f),
+                Vector3.one, PixelArt.ConeShade, Color.white, -5);
+
+            var bulb = Decoration(go.transform, new Vector3(0f, -cord - 0.52f, 0f),
+                new Vector3(0.16f, 0.16f, 1f), PixelArt.Disc, new Color(1f, 0.95f, 0.82f, 0.95f), -4);
+            bulb.sharedMaterial = VisualFactory.GlowMat;
+
+            var cone = Decoration(go.transform, new Vector3(0f, -cord - 0.5f, 0f),
+                new Vector3(2.6f, 1.6f, 1f), PixelArt.LightCone, Color.white, -5);
+            cone.sharedMaterial = VisualFactory.GlowMat;
+
+            LightDirector.CreatePoint(go.transform, new Vector2(0f, -cord - 0.8f),
+                new Color(1f, 0.92f, 0.76f), 4.2f, 0.5f);
+        }
+
+        static SpriteRenderer Decoration(Transform parent, Vector3 localPos, Vector3 scale, Sprite sprite, Color color, int order)
+        {
+            var go = new GameObject("Part");
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localPos;
+            go.transform.localScale = scale;
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = sprite;
+            sr.sharedMaterial = VisualFactory.SpriteMat;
+            sr.color = color;
+            sr.sortingOrder = order;
+            return sr;
         }
 
         static void BuildLayer(Transform root, string name, float factor, int order,

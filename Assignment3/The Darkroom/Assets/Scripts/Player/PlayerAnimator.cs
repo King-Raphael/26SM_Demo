@@ -26,6 +26,16 @@ namespace Darkroom
             sr.sharedMaterial = VisualFactory.SpriteMat;
             sr.sortingOrder = VisualFactory.OrderPlayer;
 
+            // faint aura so the silhouette reads against pure dark
+            var aura = new GameObject("Aura");
+            aura.transform.SetParent(visual.transform, false);
+            aura.transform.localScale = new Vector3(2.2f, 2.6f, 1f);
+            var asr = aura.AddComponent<SpriteRenderer>();
+            asr.sprite = PixelArt.SoftGlow;
+            asr.sharedMaterial = VisualFactory.GlowMat;
+            asr.color = new Color(0.85f, 0.88f, 0.95f, 0.10f);
+            asr.sortingOrder = VisualFactory.OrderPlayer - 1;
+
             var anim = pc.gameObject.AddComponent<PlayerAnimator>();
             anim._pc = pc;
             anim._sr = sr;
@@ -111,81 +121,11 @@ namespace Darkroom
         static void EnsureSprites()
         {
             if (_idle != null) return;
-            // a small photographer: hair, face, cold scarf, coat, camera
-            var pal = new Dictionary<char, Color32>
-            {
-                { 'H', new Color32(0x34, 0x38, 0x3E, 0xFF) },  // hair
-                { 'F', new Color32(0xF2, 0xF2, 0xF2, 0xFF) },  // face
-                { 'D', new Color32(0x2A, 0x2E, 0x36, 0xFF) },  // eyes
-                { 'S', new Color32(0xAE, 0xBB, 0xD0, 0xFF) },  // scarf
-                { 'B', new Color32(0xE6, 0xE8, 0xEC, 0xFF) },  // coat
-                { 'C', new Color32(0x2E, 0x31, 0x38, 0xFF) },  // camera
-                { 'L', new Color32(0x9F, 0xD8, 0xE6, 0xFF) },  // lens
-                { 'G', new Color32(0xC2, 0xC6, 0xCE, 0xFF) },  // legs
-                { 'K', new Color32(0x2B, 0x2E, 0x34, 0xFF) },  // shoes
-            };
-            string[] torso =
-            {
-                "..............",
-                "....HHHHHH....",
-                "...HHHHHHHH...",
-                "...HFFFFFFH...",
-                "...FFFFFFFF...",
-                "...FFDFFDFF...",
-                "...FFFFFFFF...",
-                "....FFFFFF....",
-                "...SSSSSSSS...",
-                "..BBSSSSSSBB..",
-                ".BBBBBBBBBBBB.",
-                ".BBBBBBBBBBBB.",
-                ".BBCCCCCCCBBB.",
-                ".BBCCLLCCCBBB.",
-                ".BBCCLLCCCBBB.",
-                ".BBCCCCCCCBBB.",
-                ".BBBBBBBBBBBB.",
-                "..BBBBBBBBBB..",
-                "..BBBBBBBBBB..",
-            };
-            _idle = Build("PlayerIdle", torso, pal,
-                "...BBB..BBB...",
-                "...GGG..GGG...",
-                "...GGG..GGG...",
-                "...GGG..GGG...",
-                "...GGG..GGG...",
-                "...GG....GG...",
-                "...KK....KK...");
-            _walkA = Build("PlayerWalkA", torso, pal,
-                "...BBB..BBB...",
-                "..GGG....GGG..",
-                "..GGG....GGG..",
-                ".GGG......GGG.",
-                ".GGG......GGG.",
-                ".GG........GG.",
-                ".KK........KK.");
-            _walkB = Build("PlayerWalkB", torso, pal,
-                "...BBB..BBB...",
-                "....GGGGGG....",
-                "....GGGGGG....",
-                "....GG..GG....",
-                "....GG..GG....",
-                "....GG..GG....",
-                "....KK..KK....");
-            _jump = Build("PlayerJump", torso, pal,
-                "...BBB..BBB...",
-                "..GGG....GGG..",
-                "...GGG..GGG...",
-                "....GGGGGG....",
-                ".....GGGG.....",
-                "..............",
-                "..............");
-        }
-
-        static Sprite Build(string name, string[] torso, Dictionary<char, Color32> pal, params string[] legs)
-        {
-            var rows = new string[torso.Length + legs.Length];
-            torso.CopyTo(rows, 0);
-            legs.CopyTo(rows, torso.Length);
-            return PixelArt.FromMap(name, rows, pal, 20f); // 14x26 px @ 20 ppu = 0.7 x 1.3
+            // soft silhouette girl (concept-art style), drawn by SilhouetteArt
+            _idle = SilhouetteArt.PlayerIdle;
+            _walkA = SilhouetteArt.PlayerWalkA;
+            _walkB = SilhouetteArt.PlayerWalkB;
+            _jump = SilhouetteArt.PlayerJump;
         }
     }
 }

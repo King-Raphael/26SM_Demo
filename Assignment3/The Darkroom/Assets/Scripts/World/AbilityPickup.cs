@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Darkroom
 {
-    public enum Ability { Flash, Shutter }
+    public enum Ability { Flash, Shutter, Negative }
 
     /// Floats with a slow 0.2-unit bob and a faint red pulse.
     /// On pickup: unlock the ability, full-screen flash, banner, despawn.

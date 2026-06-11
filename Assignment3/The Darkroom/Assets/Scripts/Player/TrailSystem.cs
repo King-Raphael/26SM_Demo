@@ -70,9 +70,17 @@ namespace Darkroom
                 FixActive();
             }
 
+            bool shutterOpen = _active != null && canDraw;
             if (AudioDirector.Instance != null)
-                AudioDirector.Instance.SetDrawing(_active != null && canDraw);
+                AudioDirector.Instance.SetDrawing(shutterOpen);
+            if (shutterOpen != _shutterOpenUI && HUDController.Instance != null)
+            {
+                _shutterOpenUI = shutterOpen;
+                HUDController.Instance.SetShutterOpen(shutterOpen);
+            }
         }
+
+        bool _shutterOpenUI;
 
         Vector2 DrawPos => _player.FeetPos + new Vector2(0f, -FeetOffset);
 

@@ -10,12 +10,14 @@ namespace Darkroom
     {
         public static LightDirector Instance { get; private set; }
 
-        static readonly Color NormalColor = new Color(1f, 1f, 1f);
-        static readonly Color UnderColor = new Color(0.42f, 0.50f, 0.72f);
-        static readonly Color OverColor = new Color(1f, 0.94f, 0.82f);
-        const float NormalIntensity = 1.0f;
-        const float UnderIntensity = 0.30f;
-        const float OverIntensity = 1.35f;
+        // cinematic grading: lamp pools carry the scene in Normal,
+        // Under is genuinely cold-dark, Over blows out warm sepia
+        static readonly Color NormalColor = new Color(0.93f, 0.95f, 1.0f);
+        static readonly Color UnderColor = new Color(0.40f, 0.48f, 0.72f);
+        static readonly Color OverColor = new Color(1.0f, 0.92f, 0.78f);
+        const float NormalIntensity = 0.75f;
+        const float UnderIntensity = 0.22f;
+        const float OverIntensity = 1.25f;
         const float LerpSpeed = 6f;
 
         Light2D _global;

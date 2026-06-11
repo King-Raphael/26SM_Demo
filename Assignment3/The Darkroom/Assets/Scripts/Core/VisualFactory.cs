@@ -65,9 +65,9 @@ namespace Darkroom
         static Color Hex(int v) =>
             new Color(((v >> 16) & 0xFF) / 255f, ((v >> 8) & 0xFF) / 255f, (v & 0xFF) / 255f, 1f);
 
-        // Palette (spec section 9)
-        public static readonly Color Background     = Hex(0x121212);
-        public static readonly Color BackgroundWarm = Hex(0x1A1414); // far-right "developing" tint
+        // Palette (cinematic restyle: deeper blacks)
+        public static readonly Color Background     = Hex(0x0D0D0F);
+        public static readonly Color BackgroundWarm = Hex(0x131010); // far-right "developing" tint
         public static readonly Color StaticGround   = Hex(0x6E6E6E);
         public static readonly Color DarkPath       = Hex(0x3A4A8C);
         public static readonly Color BrightBarrier  = Hex(0xEDEDED);

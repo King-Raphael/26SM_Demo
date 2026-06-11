@@ -4,39 +4,80 @@ using UnityEngine.UI;
 
 namespace Darkroom
 {
-    /// Code-built UGUI canvas: exposure overlay, film-strip HUD (3 frames,
-    /// lock glyph, key labels), stroke-budget dots, hint line, banner,
-    /// respawn fade and the 1-frame switch flash.
+    /// Camera-viewfinder HUD (concept-art restyle): exposure slider with state
+    /// badge, room title + objectives, progressive control hints, tutorial-only
+    /// exposure card, world-anchored hint bubbles, and a viewfinder frame +
+    /// blinking REC that appear only while the shutter is open (drawing).
     public class HUDController : MonoBehaviour
     {
         public static HUDController Instance { get; private set; }
 
         public Transform CanvasRoot { get; private set; }
 
+        // full-screen layers
         Image _overlay, _whiteFlash, _blackFade;
         RawImage _grain, _vignette;
         Texture2D[] _grainTex;
-        Text _timerText, _mutedText;
-        GameObject _pausePanel;
-        RectTransform _strip;
-        Vector2 _stripBasePos;
-        readonly Image[] _frameBorders = new Image[3];
-        readonly Image[] _frameInners = new Image[3];
-        readonly Color[] _frameColors = new Color[3];
-        GameObject _lockGlyph;
-        readonly Image[] _dots = new Image[3];
-        Text _hintText, _bannerText, _checkpointText;
 
+        // exposure slider
+        RectTransform _sliderGroup, _knob;
+        Vector2 _sliderBasePos;
+        readonly Text[] _stateLabels = new Text[3];
+        Text _badgeText;
+        GameObject _lockUnder, _lockOver;
+        static readonly float[] KnobSlots = { -120f, 0f, 120f };
+
+        // trails budget
+        GameObject _trailsGroup;
+        readonly Image[] _trailTicks = new Image[3];
+
+        // top-left room info
+        Text _roomTitle;
+        readonly Text[] _objLines = new Text[2];
+        int _shownRoom = -1;
+
+        // top-right controls (tutorial only)
+        Text _controlsText;
+        CanvasGroup _controlsGroup;
+        bool _controlsGone;
+
+        // bottom exposure card (tutorial only)
+        CanvasGroup _cardGroup;
+        Text _cardTitle, _cardBody;
+        Coroutine _cardCo;
+
+        // viewfinder + REC (shutter open only)
+        CanvasGroup _shutterGroup;
+        Image _recDot;
+
+        // world-anchored hint bubble
+        RectTransform _bubble;
+        Text _bubbleText;
+        Transform _bubbleAnchor;
         object _hintKey;
-        Coroutine _overlayCo, _shakeCo, _bannerCo, _hintHideCo, _checkpointCo, _flashCo;
+        Coroutine _hintHideCo;
 
-        static readonly Color BorderDim = new Color(0.23f, 0.23f, 0.23f, 1f);
-        static readonly Color DotBright = VisualFactory.BrightStroke;
-        static readonly Color DotDim = new Color(0.23f, 0.23f, 0.23f, 1f);
-        // Real 2D lighting now does most of the look; the overlay only tints.
+        // misc
+        Text _timerText, _mutedText, _checkpointText, _bannerText;
+        GameObject _bannerBox, _pausePanel;
+        Coroutine _overlayCo, _shakeCo, _bannerCo, _checkpointCo, _flashCo, _knobCo, _shutterCo, _controlsCo;
+
         static readonly Color OverlayUnder = new Color(0.02f, 0.04f, 0.10f, 0.34f);
         static readonly Color OverlayNormal = new Color(0f, 0f, 0f, 0f);
-        static readonly Color OverlayOver = new Color(1f, 0.97f, 0.88f, 0.28f);
+        static readonly Color OverlayOver = new Color(1f, 0.95f, 0.84f, 0.26f);
+        static readonly Color TextBright = new Color(0.93f, 0.93f, 0.91f, 1f);
+        static readonly Color TextDim = new Color(0.45f, 0.45f, 0.45f, 1f);
+        static readonly Color RecRed = new Color(0.85f, 0.15f, 0.13f, 1f);
+        static readonly Color PanelBg = new Color(0.04f, 0.04f, 0.045f, 0.86f);
+        static readonly Color PanelBorder = new Color(0.85f, 0.85f, 0.83f, 0.55f);
+
+        static readonly string[] BadgeNames = { "UNDEREXPOSED", "NORMAL", "OVEREXPOSED" };
+        static readonly string[] CardBodies =
+        {
+            "Hidden paths emerge from the dark.\nDark trails are solid only here.",
+            "Stable and readable.\nNo trails can be drawn.",
+            "Light burns through white barriers\nand wakes what sleeps.",
+        };
 
         public static HUDController Build()
         {
@@ -85,7 +126,7 @@ namespace Darkroom
         {
             var rt = NewRect(name, parent);
             var txt = rt.gameObject.AddComponent<Text>();
-            txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            txt.font = FontLoader.Mono;
             txt.text = content;
             txt.fontSize = size;
             txt.color = color;
@@ -113,15 +154,43 @@ namespace Darkroom
             rt.offsetMax = Vector2.zero;
         }
 
+        /// 1.5px frame along all four edges of a rect.
+        public static void AddBorder(RectTransform rt, Color c)
+        {
+            const float t = 1.5f;
+            var top = NewImage("BorderT", rt, c);
+            top.rectTransform.anchorMin = new Vector2(0f, 1f);
+            top.rectTransform.anchorMax = new Vector2(1f, 1f);
+            top.rectTransform.pivot = new Vector2(0.5f, 1f);
+            top.rectTransform.sizeDelta = new Vector2(0f, t);
+            top.rectTransform.anchoredPosition = Vector2.zero;
+            var bot = NewImage("BorderB", rt, c);
+            bot.rectTransform.anchorMin = new Vector2(0f, 0f);
+            bot.rectTransform.anchorMax = new Vector2(1f, 0f);
+            bot.rectTransform.pivot = new Vector2(0.5f, 0f);
+            bot.rectTransform.sizeDelta = new Vector2(0f, t);
+            bot.rectTransform.anchoredPosition = Vector2.zero;
+            var left = NewImage("BorderL", rt, c);
+            left.rectTransform.anchorMin = new Vector2(0f, 0f);
+            left.rectTransform.anchorMax = new Vector2(0f, 1f);
+            left.rectTransform.pivot = new Vector2(0f, 0.5f);
+            left.rectTransform.sizeDelta = new Vector2(t, 0f);
+            left.rectTransform.anchoredPosition = Vector2.zero;
+            var right = NewImage("BorderR", rt, c);
+            right.rectTransform.anchorMin = new Vector2(1f, 0f);
+            right.rectTransform.anchorMax = new Vector2(1f, 1f);
+            right.rectTransform.pivot = new Vector2(1f, 0.5f);
+            right.rectTransform.sizeDelta = new Vector2(t, 0f);
+            right.rectTransform.anchoredPosition = Vector2.zero;
+        }
+
         // ---------- construction ----------
 
         void BuildUI()
         {
-            // exposure overlay (bottom of the stack)
             _overlay = NewImage("ExposureOverlay", CanvasRoot, OverlayNormal);
             Stretch(_overlay.rectTransform);
 
-            // faint film grain (stretch #3): flickering tiled noise
             _grainTex = new Texture2D[3];
             for (int g = 0; g < 3; g++) _grainTex[g] = MakeGrainTexture(g);
             var grainRT = NewRect("FilmGrain", CanvasRoot);
@@ -133,7 +202,6 @@ namespace Darkroom
             _grain.uvRect = new Rect(0f, 0f, 15f, 8.44f);
             StartCoroutine(GrainFlicker());
 
-            // radial vignette, fades in while Underexposed
             var vigRT = NewRect("Vignette", CanvasRoot);
             Stretch(vigRT);
             _vignette = vigRT.gameObject.AddComponent<RawImage>();
@@ -141,94 +209,240 @@ namespace Darkroom
             _vignette.color = new Color(1f, 1f, 1f, 0f);
             _vignette.raycastTarget = false;
 
-            // film strip
-            _strip = NewRect("FilmStrip", CanvasRoot);
-            Place(_strip, new Vector2(0f, 1f), new Vector2(24f, -24f), new Vector2(330f, 150f));
-            _stripBasePos = _strip.anchoredPosition;
+            BuildShutterFrame();
+            BuildExposureSlider();
+            BuildTrailsGroup();
+            BuildRoomInfo();
+            BuildControlsBlock();
+            BuildBubble();
+            BuildCard();
 
-            // film backing + sprocket holes
-            var backing = NewImage("FilmBacking", _strip, new Color(0.055f, 0.055f, 0.055f, 0.92f));
-            Place(backing.rectTransform, new Vector2(0f, 1f), new Vector2(-12f, 12f), new Vector2(336f, 92f));
-            for (int i = 0; i < 7; i++)
-            {
-                var hTop = NewImage("SprocketT" + i, _strip, new Color(0.14f, 0.14f, 0.14f, 1f));
-                Place(hTop.rectTransform, new Vector2(0f, 1f), new Vector2(-2f + i * 52f, 6f), new Vector2(12f, 9f));
-                var hBot = NewImage("SprocketB" + i, _strip, new Color(0.14f, 0.14f, 0.14f, 1f));
-                Place(hBot.rectTransform, new Vector2(0f, 1f), new Vector2(-2f + i * 52f, -71f), new Vector2(12f, 9f));
-            }
-
-            _frameColors[0] = new Color(0.10f, 0.13f, 0.25f, 1f);  // Under preview
-            _frameColors[1] = new Color(0.55f, 0.55f, 0.55f, 1f);  // Normal preview
-            _frameColors[2] = new Color(1f, 0.95f, 0.85f, 1f);     // Over preview
-            string[] keys = { "1", "2", "3" };
-            for (int i = 0; i < 3; i++)
-            {
-                var border = NewImage("Frame" + i, _strip, BorderDim);
-                Place(border.rectTransform, new Vector2(0f, 1f), new Vector2(i * 108f, 0f), new Vector2(96f, 68f));
-                _frameBorders[i] = border;
-
-                var inner = NewImage("Inner", border.transform, _frameColors[i]);
-                Place(inner.rectTransform, new Vector2(0f, 1f), new Vector2(4f, -4f), new Vector2(88f, 60f));
-                _frameInners[i] = inner;
-
-                var label = NewText("Key" + i, _strip, keys[i], 20, new Color(0.73f, 0.73f, 0.73f, 1f), TextAnchor.MiddleCenter);
-                Place(label.rectTransform, new Vector2(0f, 1f), new Vector2(i * 108f + 28f, -70f), new Vector2(40f, 26f));
-            }
-
-            // lock glyph on the Over frame (built from rects; font has no padlock)
-            var glyph = NewRect("Lock", _frameBorders[2].transform);
-            Place(glyph, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(30f, 30f));
-            var body = NewImage("Body", glyph, new Color(0.07f, 0.07f, 0.07f, 0.95f));
-            Place(body.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -5f), new Vector2(22f, 16f));
-            var shackle = NewImage("Shackle", glyph, new Color(0.07f, 0.07f, 0.07f, 0.95f));
-            Place(shackle.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 6f), new Vector2(14f, 12f));
-            _lockGlyph = glyph.gameObject;
-
-            // stroke-budget dots
-            for (int i = 0; i < 3; i++)
-            {
-                var dot = NewImage("Dot" + i, _strip, DotBright);
-                Place(dot.rectTransform, new Vector2(0f, 1f), new Vector2(8f + i * 24f, -104f), new Vector2(14f, 14f));
-                _dots[i] = dot;
-            }
-
-            // hint line, banner, checkpoint text
-            _hintText = NewText("Hint", CanvasRoot, "", 26, new Color(0.88f, 0.88f, 0.88f, 1f), TextAnchor.MiddleCenter);
-            Place(_hintText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 90f), new Vector2(1400f, 90f));
-
-            _bannerText = NewText("Banner", CanvasRoot, "", 30, VisualFactory.BrightStroke, TextAnchor.MiddleCenter);
-            Place(_bannerText.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -140f), new Vector2(1500f, 60f));
+            // banner (boxed)
+            var bannerRT = NewRect("BannerBox", CanvasRoot);
+            Place(bannerRT, new Vector2(0.5f, 1f), new Vector2(0f, -150f), new Vector2(900f, 52f));
+            var bannerBg = NewImage("Bg", bannerRT, PanelBg);
+            Stretch(bannerBg.rectTransform);
+            AddBorder(bannerRT, PanelBorder);
+            _bannerText = NewText("Banner", bannerRT, "", 24, new Color(1f, 0.95f, 0.84f, 1f), TextAnchor.MiddleCenter);
+            Stretch(_bannerText.rectTransform);
+            _bannerBox = bannerRT.gameObject;
+            _bannerBox.SetActive(false);
 
             _checkpointText = NewText("CheckpointFlash", CanvasRoot, "", 22, new Color(0.81f, 0.81f, 0.81f, 1f), TextAnchor.MiddleCenter);
-            Place(_checkpointText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 160f), new Vector2(800f, 40f));
+            Place(_checkpointText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 200f), new Vector2(800f, 40f));
 
-            // replay timer (stretch #5): hidden until the first win
             _timerText = NewText("ReplayTimer", CanvasRoot, "", 24, new Color(0.73f, 0.73f, 0.73f, 1f), TextAnchor.MiddleRight);
-            Place(_timerText.rectTransform, new Vector2(1f, 1f), new Vector2(-24f, -24f), new Vector2(220f, 36f));
+            Place(_timerText.rectTransform, new Vector2(1f, 1f), new Vector2(-36f, -176f), new Vector2(220f, 36f));
 
             _mutedText = NewText("Muted", CanvasRoot, "", 20, new Color(0.55f, 0.55f, 0.55f, 1f), TextAnchor.MiddleRight);
-            Place(_mutedText.rectTransform, new Vector2(1f, 1f), new Vector2(-24f, -58f), new Vector2(160f, 28f));
+            Place(_mutedText.rectTransform, new Vector2(1f, 1f), new Vector2(-36f, -210f), new Vector2(160f, 28f));
 
             BuildPausePanel();
 
-            // respawn fade + switch flash (topmost)
             _blackFade = NewImage("BlackFade", CanvasRoot, new Color(0f, 0f, 0f, 0f));
             Stretch(_blackFade.rectTransform);
             _whiteFlash = NewImage("WhiteFlash", CanvasRoot, new Color(1f, 1f, 1f, 0f));
             Stretch(_whiteFlash.rectTransform);
 
-            ApplyLockVisual(false);
-            HighlightFrame(Exposure.Normal);
+            ApplyLocks();
+            HighlightState(Exposure.Normal);
             StartCoroutine(TitleCard());
+            StartCoroutine(RecBlink());
+        }
+
+        void BuildShutterFrame()
+        {
+            // viewfinder corners + REC: visible only while drawing (shutter open)
+            var rt = NewRect("ShutterFrame", CanvasRoot);
+            Stretch(rt);
+            _shutterGroup = rt.gameObject.AddComponent<CanvasGroup>();
+            _shutterGroup.alpha = 0f;
+
+            var c = new Color(0.92f, 0.92f, 0.90f, 0.8f);
+            void Corner(Vector2 anchor, int sx, int sy)
+            {
+                var h = NewImage("CornerH", rt, c);
+                Place(h.rectTransform, anchor, new Vector2(34f * sx, 34f * sy), new Vector2(58f, 4f));
+                var v = NewImage("CornerV", rt, c);
+                Place(v.rectTransform, anchor, new Vector2(34f * sx, 34f * sy), new Vector2(4f, 58f));
+            }
+            Corner(new Vector2(0f, 1f), 1, -1);
+            Corner(new Vector2(1f, 1f), -1, -1);
+            Corner(new Vector2(0f, 0f), 1, 1);
+            Corner(new Vector2(1f, 0f), -1, 1);
+
+            _recDot = NewImage("RecDot", rt, RecRed);
+            _recDot.sprite = PixelArt.Disc;
+            Place(_recDot.rectTransform, new Vector2(0f, 0f), new Vector2(44f, 44f), new Vector2(18f, 18f));
+            var recText = NewText("RecText", rt, "REC", 26, RecRed, TextAnchor.MiddleLeft);
+            Place(recText.rectTransform, new Vector2(0f, 0f), new Vector2(70f, 34f), new Vector2(120f, 36f));
+        }
+
+        void BuildExposureSlider()
+        {
+            _sliderGroup = NewRect("ExposureSlider", CanvasRoot);
+            Place(_sliderGroup, new Vector2(0.5f, 1f), new Vector2(0f, -28f), new Vector2(460f, 120f));
+            _sliderBasePos = _sliderGroup.anchoredPosition;
+
+            var caption = NewText("Caption", _sliderGroup, "EXPOSURE", 22, TextBright, TextAnchor.MiddleCenter);
+            Place(caption.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, 0f), new Vector2(300f, 26f));
+
+            var track = NewImage("Track", _sliderGroup, new Color(0.23f, 0.23f, 0.25f, 1f));
+            Place(track.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -38f), new Vector2(360f, 6f));
+
+            _knob = NewImage("Knob", _sliderGroup, TextBright).rectTransform;
+            ((Image)_knob.GetComponent<Image>()).sprite = PixelArt.Disc;
+            Place(_knob, new Vector2(0.5f, 1f), new Vector2(KnobSlots[1], -35f), new Vector2(20f, 20f));
+
+            string[] names = { "UNDER", "BALANCED", "OVER" };
+            for (int i = 0; i < 3; i++)
+            {
+                _stateLabels[i] = NewText("State" + i, _sliderGroup, names[i], 20, TextDim, TextAnchor.MiddleCenter);
+                Place(_stateLabels[i].rectTransform, new Vector2(0.5f, 1f), new Vector2(KnobSlots[i], -64f), new Vector2(150f, 26f));
+            }
+
+            _lockUnder = BuildMiniLock(_sliderGroup, new Vector2(KnobSlots[0] - 62f, -64f));
+            _lockOver = BuildMiniLock(_sliderGroup, new Vector2(KnobSlots[2] + 50f, -64f));
+
+            var badge = NewRect("Badge", _sliderGroup);
+            Place(badge, new Vector2(0.5f, 1f), new Vector2(0f, -88f), new Vector2(230f, 34f));
+            var bg = NewImage("Bg", badge, PanelBg);
+            Stretch(bg.rectTransform);
+            AddBorder(badge, PanelBorder);
+            _badgeText = NewText("BadgeText", badge, "NORMAL", 20, TextBright, TextAnchor.MiddleCenter);
+            Stretch(_badgeText.rectTransform);
+        }
+
+        GameObject BuildMiniLock(Transform parent, Vector2 pos)
+        {
+            var glyph = NewRect("Lock", parent);
+            Place(glyph, new Vector2(0.5f, 1f), pos, new Vector2(18f, 20f));
+            var body = NewImage("Body", glyph, TextDim);
+            Place(body.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -4f), new Vector2(14f, 10f));
+            var shackle = NewImage("Shackle", glyph, TextDim);
+            Place(shackle.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 4f), new Vector2(9f, 8f));
+            return glyph.gameObject;
+        }
+
+        void BuildTrailsGroup()
+        {
+            var rt = NewRect("TrailsGroup", CanvasRoot);
+            Place(rt, new Vector2(0.5f, 1f), new Vector2(310f, -118f), new Vector2(160f, 26f));
+            var label = NewText("Label", rt, "TRAILS", 18, TextDim, TextAnchor.MiddleLeft);
+            Place(label.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0f), new Vector2(80f, 24f));
+            for (int i = 0; i < 3; i++)
+            {
+                _trailTicks[i] = NewImage("Tick" + i, rt, TextBright);
+                Place(_trailTicks[i].rectTransform, new Vector2(0f, 0.5f), new Vector2(86f + i * 20f, 0f), new Vector2(12f, 12f));
+            }
+            _trailsGroup = rt.gameObject;
+            _trailsGroup.SetActive(false);
+        }
+
+        void BuildRoomInfo()
+        {
+            _roomTitle = NewText("RoomTitle", CanvasRoot, "", 26, TextBright, TextAnchor.MiddleLeft);
+            Place(_roomTitle.rectTransform, new Vector2(0f, 1f), new Vector2(40f, -40f), new Vector2(800f, 34f));
+            for (int i = 0; i < 2; i++)
+            {
+                _objLines[i] = NewText("Objective" + i, CanvasRoot, "", 20, new Color(0.62f, 0.62f, 0.60f, 1f), TextAnchor.MiddleLeft);
+                Place(_objLines[i].rectTransform, new Vector2(0f, 1f), new Vector2(42f, -78f - i * 30f), new Vector2(800f, 26f));
+            }
+        }
+
+        void BuildControlsBlock()
+        {
+            _controlsText = NewText("Controls", CanvasRoot, "", 20, new Color(0.72f, 0.72f, 0.70f, 1f), TextAnchor.UpperRight);
+            _controlsText.lineSpacing = 1.5f;
+            Place(_controlsText.rectTransform, new Vector2(1f, 1f), new Vector2(-36f, -36f), new Vector2(560f, 130f));
+            _controlsGroup = _controlsText.gameObject.AddComponent<CanvasGroup>();
+            RebuildControls();
+        }
+
+        void BuildBubble()
+        {
+            _bubble = NewRect("HintBubble", CanvasRoot);
+            Place(_bubble, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(460f, 84f));
+            _bubble.pivot = new Vector2(0.5f, 0f);
+            var bg = NewImage("Bg", _bubble, PanelBg);
+            Stretch(bg.rectTransform);
+            AddBorder(_bubble, PanelBorder);
+            // tail: small rotated square poking out of the bottom edge
+            var tail = NewImage("Tail", _bubble, PanelBg);
+            Place(tail.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, -7f), new Vector2(16f, 16f));
+            tail.rectTransform.localEulerAngles = new Vector3(0f, 0f, 45f);
+            _bubbleText = NewText("Text", _bubble, "", 20, TextBright, TextAnchor.MiddleCenter);
+            Stretch(_bubbleText.rectTransform);
+            _bubbleText.rectTransform.offsetMin = new Vector2(16f, 8f);
+            _bubbleText.rectTransform.offsetMax = new Vector2(-16f, -8f);
+            _bubble.gameObject.SetActive(false);
+        }
+
+        void BuildCard()
+        {
+            var rt = NewRect("ExposureCard", CanvasRoot);
+            Place(rt, new Vector2(0.5f, 0f), new Vector2(0f, 64f), new Vector2(620f, 124f));
+            var bg = NewImage("Bg", rt, PanelBg);
+            Stretch(bg.rectTransform);
+            AddBorder(rt, PanelBorder);
+
+            _cardTitle = NewText("Title", rt, "", 24, TextBright, TextAnchor.MiddleLeft);
+            Place(_cardTitle.rectTransform, new Vector2(0f, 1f), new Vector2(28f, -14f), new Vector2(480f, 30f));
+            _cardBody = NewText("Body", rt, "", 19, new Color(0.66f, 0.66f, 0.64f, 1f), TextAnchor.UpperLeft);
+            _cardBody.lineSpacing = 1.35f;
+            Place(_cardBody.rectTransform, new Vector2(0f, 1f), new Vector2(28f, -50f), new Vector2(480f, 64f));
+
+            // aperture glyph: disc + 8 rays
+            var glyph = NewRect("Aperture", rt);
+            Place(glyph, new Vector2(1f, 0.5f), new Vector2(-56f, 0f), new Vector2(72f, 72f));
+            var disc = NewImage("Disc", glyph, TextBright);
+            disc.sprite = PixelArt.Disc;
+            Place(disc.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(28f, 28f));
+            for (int i = 0; i < 8; i++)
+            {
+                float ang = i * 45f;
+                var ray = NewImage("Ray" + i, glyph, TextBright);
+                Place(ray.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(4f, 14f));
+                ray.rectTransform.localEulerAngles = new Vector3(0f, 0f, ang);
+                float rad = ang * Mathf.Deg2Rad;
+                ray.rectTransform.anchoredPosition = new Vector2(-Mathf.Sin(rad), Mathf.Cos(rad)) * 26f;
+            }
+
+            _cardGroup = rt.gameObject.AddComponent<CanvasGroup>();
+            _cardGroup.alpha = 0f;
+            rt.gameObject.SetActive(false);
+        }
+
+        void BuildPausePanel()
+        {
+            var rt = NewRect("PausePanel", CanvasRoot);
+            Stretch(rt);
+            var dim = rt.gameObject.AddComponent<Image>();
+            dim.color = new Color(0f, 0f, 0f, 0.62f);
+            dim.raycastTarget = false;
+
+            var title = NewText("PauseTitle", rt, "PAUSED", 56, TextBright, TextAnchor.MiddleCenter);
+            Place(title.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 120f), new Vector2(600f, 80f));
+
+            var help = NewText("PauseHelp", rt,
+                "MOVE  A/D or arrows        JUMP  Space\n" +
+                "EXPOSURE  1 Under   2 Normal   3 Over        CYCLE  E / Q\n" +
+                "DRAW LIGHT  hold Shift, release to fix\n" +
+                "RESTART FROM CHECKPOINT  R        MUTE  M\n\n" +
+                "ESC  resume",
+                24, new Color(0.72f, 0.72f, 0.70f, 1f), TextAnchor.MiddleCenter);
+            help.lineSpacing = 1.5f;
+            Place(help.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -60f), new Vector2(1200f, 300f));
+
+            _pausePanel = rt.gameObject;
+            _pausePanel.SetActive(false);
         }
 
         IEnumerator TitleCard()
         {
-            var title = NewText("Title", CanvasRoot, "THE DARKROOM", 72,
-                new Color(0.95f, 0.93f, 0.88f, 1f), TextAnchor.MiddleCenter);
+            var title = NewText("Title", CanvasRoot, "THE DARKROOM", 72, new Color(0.95f, 0.93f, 0.88f, 1f), TextAnchor.MiddleCenter);
             Place(title.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 90f), new Vector2(1400f, 110f));
-            var sub = NewText("TitleSub", CanvasRoot, "develop the world — fix the light", 26,
-                new Color(0.62f, 0.62f, 0.60f, 1f), TextAnchor.MiddleCenter);
+            var sub = NewText("TitleSub", CanvasRoot, "develop the world — fix the light", 26, new Color(0.62f, 0.62f, 0.60f, 1f), TextAnchor.MiddleCenter);
             Place(sub.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 24f), new Vector2(1000f, 40f));
 
             yield return new WaitForSeconds(2.0f);
@@ -245,106 +459,63 @@ namespace Darkroom
             Destroy(sub.gameObject);
         }
 
-        Texture2D MakeVignetteTexture()
-        {
-            int n = 256;
-            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
-            tex.filterMode = FilterMode.Bilinear;
-            tex.wrapMode = TextureWrapMode.Clamp;
-            var px = new Color32[n * n];
-            for (int y = 0; y < n; y++)
-                for (int x = 0; x < n; x++)
-                {
-                    float dx = (x - 127.5f) / 127.5f;
-                    float dy = (y - 127.5f) / 127.5f;
-                    float r = Mathf.Sqrt(dx * dx + dy * dy);
-                    float a = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((r - 0.5f) / 0.55f));
-                    px[y * n + x] = new Color32(0, 0, 0, (byte)(a * 255f));
-                }
-            tex.SetPixels32(px);
-            tex.Apply();
-            return tex;
-        }
-
-        void BuildPausePanel()
-        {
-            var rt = NewRect("PausePanel", CanvasRoot);
-            Stretch(rt);
-            var dim = rt.gameObject.AddComponent<Image>();
-            dim.color = new Color(0f, 0f, 0f, 0.62f);
-            dim.raycastTarget = false;
-
-            var title = NewText("PauseTitle", rt, "PAUSED", 56, new Color(0.93f, 0.91f, 0.87f, 1f), TextAnchor.MiddleCenter);
-            Place(title.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 120f), new Vector2(600f, 80f));
-
-            var help = NewText("PauseHelp", rt,
-                "MOVE  A/D or arrows        JUMP  Space\n" +
-                "EXPOSURE  1 Under   2 Normal   3 Over        CYCLE  E / Q\n" +
-                "DRAW LIGHT  hold Shift, release to fix\n" +
-                "RESTART FROM CHECKPOINT  R        MUTE  M\n\n" +
-                "ESC  resume",
-                26, new Color(0.72f, 0.72f, 0.70f, 1f), TextAnchor.MiddleCenter);
-            help.lineSpacing = 1.5f;
-            Place(help.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -60f), new Vector2(1200f, 300f));
-
-            _pausePanel = rt.gameObject;
-            _pausePanel.SetActive(false);
-        }
-
-        public void ShowPause(bool paused) { _pausePanel.SetActive(paused); }
-
-        public void SetMuted(bool muted) { _mutedText.text = muted ? "MUTED" : ""; }
-
-        Texture2D MakeGrainTexture(int seed)
-        {
-            var tex = new Texture2D(128, 128, TextureFormat.RGBA32, false);
-            tex.wrapMode = TextureWrapMode.Repeat;
-            tex.filterMode = FilterMode.Point;
-            var rng = new System.Random(7000 + seed);
-            var px = new Color32[128 * 128];
-            for (int i = 0; i < px.Length; i++)
-            {
-                // mostly transparent, a few bright specks
-                float a = Mathf.Pow((float)rng.NextDouble(), 7f);
-                px[i] = new Color32(255, 255, 255, (byte)(a * 255f));
-            }
-            tex.SetPixels32(px);
-            tex.Apply();
-            return tex;
-        }
-
-        IEnumerator GrainFlicker()
-        {
-            var wait = new WaitForSeconds(0.09f);
-            int i = 0;
-            while (true)
-            {
-                i = (i + 1) % _grainTex.Length;
-                _grain.texture = _grainTex[i];
-                _grain.uvRect = new Rect(Random.value, Random.value, 15f, 8.44f);
-                yield return wait;
-            }
-        }
+        // ---------- per-frame ----------
 
         void Update()
         {
             var gm = GameManager.Instance;
-            if (gm == null || _timerText == null) return;
+            if (gm == null || gm.Player == null) return;
+            float x = gm.Player.transform.position.x;
+
+            // replay timer
             if (gm.HasEverWon && !gm.HasWon) _timerText.text = FormatTime(gm.RunTime);
             else if (!gm.HasEverWon) _timerText.text = "";
-        }
 
-        public static string FormatTime(float t)
-        {
-            int m = (int)(t / 60f);
-            return m + ":" + (t - m * 60f).ToString("00.0");
+            // room title + objectives
+            int room = LevelData.RoomIndexAt(x);
+            if (room != _shownRoom)
+            {
+                _shownRoom = room;
+                var def = LevelData.Rooms[room];
+                _roomTitle.text = "ROOM " + room + " : " + def.title;
+                for (int i = 0; i < 2; i++)
+                    _objLines[i].text = i < def.objectives.Length ? "○ " + def.objectives[i] : "";
+            }
+
+            // controls block retires after the tutorial rooms
+            if (!_controlsGone && x > 42f)
+            {
+                _controlsGone = true;
+                if (_controlsCo != null) StopCoroutine(_controlsCo);
+                _controlsCo = StartCoroutine(FadeGroup(_controlsGroup, 0f, 1.2f));
+            }
+
+            // hint bubble follows its trigger
+            if (_bubble.gameObject.activeSelf)
+            {
+                if (_bubbleAnchor == null) { _bubble.gameObject.SetActive(false); }
+                else
+                {
+                    var cam = Camera.main;
+                    if (cam != null)
+                    {
+                        Vector2 lp;
+                        var sp = cam.WorldToScreenPoint(_bubbleAnchor.position + new Vector3(0f, 1.3f, 0f));
+                        RectTransformUtility.ScreenPointToLocalPointInRectangle((RectTransform)CanvasRoot, sp, null, out lp);
+                        var half = ((RectTransform)CanvasRoot).rect.size * 0.5f;
+                        lp.x = Mathf.Clamp(lp.x, -half.x + 250f, half.x - 250f);
+                        lp.y = Mathf.Clamp(lp.y, -half.y + 60f, half.y - 220f);
+                        _bubble.anchoredPosition = lp;
+                    }
+                }
+            }
         }
 
         // ---------- exposure feedback ----------
 
         void HandleExposureChanged(Exposure e)
         {
-            HighlightFrame(e);
+            HighlightState(e);
             Color target = e == Exposure.Underexposed ? OverlayUnder
                          : e == Exposure.Overexposed ? OverlayOver : OverlayNormal;
             float vignette = e == Exposure.Underexposed ? 0.55f : 0f;
@@ -352,12 +523,65 @@ namespace Darkroom
             _overlayCo = StartCoroutine(LerpOverlay(target, vignette, 0.15f));
             if (_flashCo != null) StopCoroutine(_flashCo);
             _flashCo = StartCoroutine(OneFrameFlash());
+            if (_knobCo != null) StopCoroutine(_knobCo);
+            _knobCo = StartCoroutine(MoveKnob(KnobSlots[(int)e]));
+            ShowCard(e);
         }
 
-        void HighlightFrame(Exposure e)
+        void HighlightState(Exposure e)
         {
             for (int i = 0; i < 3; i++)
-                _frameBorders[i].color = (int)e == i ? VisualFactory.SafelightRed : BorderDim;
+                _stateLabels[i].color = (int)e == i ? TextBright : TextDim;
+            _badgeText.text = BadgeNames[(int)e];
+        }
+
+        IEnumerator MoveKnob(float targetX)
+        {
+            float start = _knob.anchoredPosition.x;
+            float t = 0f;
+            while (t < 0.18f)
+            {
+                t += Time.deltaTime;
+                float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / 0.18f));
+                _knob.anchoredPosition = new Vector2(Mathf.Lerp(start, targetX, k), _knob.anchoredPosition.y);
+                yield return null;
+            }
+            _knob.anchoredPosition = new Vector2(targetX, _knob.anchoredPosition.y);
+        }
+
+        /// Tutorial-only exposure card: 4 s after each switch, before Room 4.
+        void ShowCard(Exposure e)
+        {
+            var gm = GameManager.Instance;
+            if (gm == null || gm.Player == null || gm.HasWon) return;
+            if (gm.Player.transform.position.x > 42f) return;
+            _cardTitle.text = "EXPOSURE : " + BadgeNames[(int)e];
+            _cardBody.text = CardBodies[(int)e];
+            if (_cardCo != null) StopCoroutine(_cardCo);
+            _cardCo = StartCoroutine(CardRoutine());
+        }
+
+        IEnumerator CardRoutine()
+        {
+            _cardGroup.gameObject.SetActive(true);
+            yield return FadeGroup(_cardGroup, 1f, 0.15f);
+            yield return new WaitForSeconds(4f);
+            yield return FadeGroup(_cardGroup, 0f, 0.35f);
+            _cardGroup.gameObject.SetActive(false);
+            _cardCo = null;
+        }
+
+        IEnumerator FadeGroup(CanvasGroup g, float target, float dur)
+        {
+            float start = g.alpha;
+            float t = 0f;
+            while (t < dur)
+            {
+                t += Time.deltaTime;
+                g.alpha = Mathf.Lerp(start, target, Mathf.Clamp01(t / dur));
+                yield return null;
+            }
+            g.alpha = target;
         }
 
         IEnumerator LerpOverlay(Color target, float vignetteTarget, float dur)
@@ -384,47 +608,94 @@ namespace Darkroom
             _whiteFlash.color = new Color(1f, 1f, 1f, 0f);
         }
 
-        /// Jam: film strip shakes 0.15 s (refused switch).
+        /// Jam: the exposure slider shakes (refused switch).
         public void JamFeedback()
         {
             if (_shakeCo != null) StopCoroutine(_shakeCo);
-            _shakeCo = StartCoroutine(ShakeStrip());
+            _shakeCo = StartCoroutine(ShakeSlider());
         }
 
-        IEnumerator ShakeStrip()
+        IEnumerator ShakeSlider()
         {
             float t = 0f;
             while (t < 0.15f)
             {
                 t += Time.deltaTime;
-                _strip.anchoredPosition = _stripBasePos + Random.insideUnitCircle * 6f;
+                _sliderGroup.anchoredPosition = _sliderBasePos + Random.insideUnitCircle * 6f;
                 yield return null;
             }
-            _strip.anchoredPosition = _stripBasePos;
+            _sliderGroup.anchoredPosition = _sliderBasePos;
+        }
+
+        // ---------- shutter open (drawing) ----------
+
+        /// Viewfinder corners + REC appear only while the shutter is open.
+        public void SetShutterOpen(bool open)
+        {
+            if (_shutterCo != null) StopCoroutine(_shutterCo);
+            _shutterCo = StartCoroutine(FadeGroup(_shutterGroup, open ? 1f : 0f, 0.2f));
+        }
+
+        IEnumerator RecBlink()
+        {
+            var wait = new WaitForSeconds(0.5f);
+            bool on = true;
+            while (true)
+            {
+                on = !on;
+                var c = RecRed;
+                c.a = on ? 1f : 0.25f;
+                _recDot.color = c;
+                yield return wait;
+            }
         }
 
         // ---------- abilities ----------
 
         public void OnAbilityUnlocked(Ability a)
         {
-            if (a == Ability.Flash)
+            switch (a)
             {
-                ApplyLockVisual(true);
-                ShowBanner("FLASH ACQUIRED — press 3: OVEREXPOSED.");
-                StartCoroutine(PunchScale(_frameBorders[2].rectTransform));
+                case Ability.Negative:
+                    ShowBanner("NEGATIVE ACQUIRED — press 1: UNDEREXPOSED.");
+                    StartCoroutine(PunchScale(_stateLabels[0].rectTransform));
+                    break;
+                case Ability.Flash:
+                    ShowBanner("FLASH ACQUIRED — press 3: OVEREXPOSED.");
+                    StartCoroutine(PunchScale(_stateLabels[2].rectTransform));
+                    break;
+                case Ability.Shutter:
+                    ShowBanner("SHUTTER ACQUIRED — hold SHIFT in UNDER or OVER to draw light. Release to fix it.");
+                    _trailsGroup.SetActive(true);
+                    StartCoroutine(PunchScale((RectTransform)_trailsGroup.transform));
+                    break;
             }
-            else
-            {
-                ShowBanner("SHUTTER ACQUIRED — hold SHIFT in UNDER or OVER to draw light. Release to fix it.");
-                for (int i = 0; i < 3; i++) StartCoroutine(PunchScale(_dots[i].rectTransform));
-            }
+            ApplyLocks();
+            RebuildControls();
             StartCoroutine(FullFlashRoutine(0.2f));
         }
 
-        void ApplyLockVisual(bool unlocked)
+        void ApplyLocks()
         {
-            _lockGlyph.SetActive(!unlocked);
-            _frameInners[2].color = unlocked ? _frameColors[2] : _frameColors[2] * new Color(0.3f, 0.3f, 0.3f, 1f);
+            var gm = GameManager.Instance;
+            bool hasNegative = gm != null && gm.HasNegative;
+            bool hasFlash = gm != null && gm.HasFlash;
+            _lockUnder.SetActive(!hasNegative);
+            _lockOver.SetActive(!hasFlash);
+            if (!hasNegative) _stateLabels[0].color = new Color(0.3f, 0.3f, 0.3f, 1f);
+            if (!hasFlash) _stateLabels[2].color = new Color(0.3f, 0.3f, 0.3f, 1f);
+        }
+
+        void RebuildControls()
+        {
+            var gm = GameManager.Instance;
+            string s = "MOVE : A/D or ←→      JUMP : SPACE";
+            if (gm != null && (gm.HasNegative || gm.HasFlash))
+                s += "\n[1][2][3] or [Q]/[E] : CHANGE EXPOSURE";
+            if (gm != null && gm.HasShutter)
+                s += "\nHOLD [SHIFT] : DRAW TRAIL\nRELEASE : FIX TRAIL";
+            s += "\n[ESC] : PAUSE      [R] : RETRY";
+            _controlsText.text = s;
         }
 
         IEnumerator PunchScale(RectTransform rt)
@@ -445,7 +716,7 @@ namespace Darkroom
         public void SetStrokeDots(int remaining)
         {
             for (int i = 0; i < 3; i++)
-                _dots[i].color = i < remaining ? DotBright : DotDim;
+                _trailTicks[i].color = i < remaining ? TextBright : new Color(0.25f, 0.25f, 0.25f, 1f);
         }
 
         // ---------- hints / banner / checkpoint ----------
@@ -454,7 +725,10 @@ namespace Darkroom
         {
             _hintKey = key;
             if (_hintHideCo != null) { StopCoroutine(_hintHideCo); _hintHideCo = null; }
-            _hintText.text = text;
+            _bubbleText.text = text;
+            var comp = key as Component;
+            _bubbleAnchor = comp != null ? comp.transform : null;
+            _bubble.gameObject.SetActive(_bubbleAnchor != null);
         }
 
         public void OnHintExit(object key)
@@ -467,7 +741,12 @@ namespace Darkroom
         IEnumerator HideHintAfter(float delay, object key)
         {
             yield return new WaitForSeconds(delay);
-            if (_hintKey == key) { _hintText.text = ""; _hintKey = null; }
+            if (_hintKey == key)
+            {
+                _bubble.gameObject.SetActive(false);
+                _hintKey = null;
+                _bubbleAnchor = null;
+            }
             _hintHideCo = null;
         }
 
@@ -480,8 +759,9 @@ namespace Darkroom
         IEnumerator BannerRoutine(string text)
         {
             _bannerText.text = text;
+            _bannerBox.SetActive(true);
             yield return new WaitForSeconds(4f);
-            _bannerText.text = "";
+            _bannerBox.SetActive(false);
         }
 
         public void CheckpointFlash()
@@ -530,23 +810,100 @@ namespace Darkroom
             _whiteFlash.color = new Color(1f, 1f, 1f, 0f);
         }
 
+        // ---------- pause / mute ----------
+
+        public void ShowPause(bool paused) { _pausePanel.SetActive(paused); }
+
+        public void SetMuted(bool muted) { _mutedText.text = muted ? "MUTED" : ""; }
+
+        public static string FormatTime(float t)
+        {
+            int m = (int)(t / 60f);
+            return m + ":" + (t - m * 60f).ToString("00.0");
+        }
+
+        // ---------- textures ----------
+
+        Texture2D MakeGrainTexture(int seed)
+        {
+            var tex = new Texture2D(128, 128, TextureFormat.RGBA32, false);
+            tex.wrapMode = TextureWrapMode.Repeat;
+            tex.filterMode = FilterMode.Point;
+            var rng = new System.Random(7000 + seed);
+            var px = new Color32[128 * 128];
+            for (int i = 0; i < px.Length; i++)
+            {
+                float a = Mathf.Pow((float)rng.NextDouble(), 7f);
+                px[i] = new Color32(255, 255, 255, (byte)(a * 255f));
+            }
+            tex.SetPixels32(px);
+            tex.Apply();
+            return tex;
+        }
+
+        IEnumerator GrainFlicker()
+        {
+            var wait = new WaitForSeconds(0.09f);
+            int i = 0;
+            while (true)
+            {
+                i = (i + 1) % _grainTex.Length;
+                _grain.texture = _grainTex[i];
+                _grain.uvRect = new Rect(Random.value, Random.value, 15f, 8.44f);
+                yield return wait;
+            }
+        }
+
+        Texture2D MakeVignetteTexture()
+        {
+            int n = 256;
+            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
+            tex.filterMode = FilterMode.Bilinear;
+            tex.wrapMode = TextureWrapMode.Clamp;
+            var px = new Color32[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float dx = (x - 127.5f) / 127.5f;
+                    float dy = (y - 127.5f) / 127.5f;
+                    float r = Mathf.Sqrt(dx * dx + dy * dy);
+                    float a = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((r - 0.5f) / 0.55f));
+                    px[y * n + x] = new Color32(0, 0, 0, (byte)(a * 255f));
+                }
+            tex.SetPixels32(px);
+            tex.Apply();
+            return tex;
+        }
+
         // ---------- restart ----------
 
         public void ResetForRestart()
         {
             var win = CanvasRoot.Find("WinScreen");
             if (win != null) Destroy(win.gameObject);
-            ApplyLockVisual(false);
+            ApplyLocks();
+            HighlightState(Exposure.Normal);
+            ApplyLocks(); // re-dim locked labels after highlight reset
+            _knob.anchoredPosition = new Vector2(KnobSlots[1], _knob.anchoredPosition.y);
+            _trailsGroup.SetActive(false);
             SetStrokeDots(3);
-            HighlightFrame(Exposure.Normal);
             _overlay.color = OverlayNormal;
             _vignette.color = new Color(1f, 1f, 1f, 0f);
-            _hintText.text = "";
-            _bannerText.text = "";
+            _bannerBox.SetActive(false);
             _checkpointText.text = "";
             _blackFade.color = new Color(0f, 0f, 0f, 0f);
             _whiteFlash.color = new Color(1f, 1f, 1f, 0f);
+            _bubble.gameObject.SetActive(false);
             _hintKey = null;
+            _bubbleAnchor = null;
+            _shownRoom = -1;
+            _controlsGone = false;
+            _controlsGroup.alpha = 1f;
+            RebuildControls();
+            if (_cardCo != null) { StopCoroutine(_cardCo); _cardCo = null; }
+            _cardGroup.alpha = 0f;
+            _cardGroup.gameObject.SetActive(false);
+            _shutterGroup.alpha = 0f;
         }
     }
 }

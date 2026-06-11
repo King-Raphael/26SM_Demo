@@ -9,12 +9,10 @@ namespace Darkroom
         public bool IsOpen { get; private set; }
 
         Collider2D _col;
-        SpriteRenderer _sr;
 
         void Awake()
         {
             _col = GetComponent<Collider2D>();
-            _sr = GetComponent<SpriteRenderer>();
         }
 
         public void Open()
@@ -22,9 +20,12 @@ namespace Darkroom
             if (IsOpen) return;
             IsOpen = true;
             _col.enabled = false;
-            var c = _sr.color;
-            c.a = 0.15f;
-            _sr.color = c;
+            foreach (var sr in GetComponentsInChildren<SpriteRenderer>())
+            {
+                var c = sr.color;
+                c.a = 0.15f;
+                sr.color = c;
+            }
             if (AudioDirector.Instance != null) AudioDirector.Instance.PlayDoor();
         }
     }

@@ -22,7 +22,8 @@ namespace Darkroom
             Check(rooms.Sum(r => r.enemies.Length) == 5, "enemies == 5, got " + rooms.Sum(r => r.enemies.Length));
             Check(rooms.Sum(r => r.sensors.Length) == 2, "sensors == 2, got " + rooms.Sum(r => r.sensors.Length));
             Check(rooms.Sum(r => r.doors.Length) == 2, "doors == 2, got " + rooms.Sum(r => r.doors.Length));
-            Check(rooms.Sum(r => r.pickups.Length) == 2, "pickups == 2, got " + rooms.Sum(r => r.pickups.Length));
+            Check(rooms.Sum(r => r.pickups.Length) == 3, "pickups == 3 (negative/flash/shutter), got " + rooms.Sum(r => r.pickups.Length));
+            Check(rooms.All(r => !string.IsNullOrEmpty(r.title)), "every room has a HUD title");
             Check(rooms.Sum(r => r.exits.Length) == 1, "exits == 1, got " + rooms.Sum(r => r.exits.Length));
             Check(rooms.Sum(r => r.hints.Length) == 18, "hints == 18, got " + rooms.Sum(r => r.hints.Length));
 

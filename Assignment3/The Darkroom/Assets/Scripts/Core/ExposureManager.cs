@@ -30,6 +30,7 @@ namespace Darkroom
             if (next == Current) return false;
             var gm = GameManager.Instance;
             if (next == Exposure.Overexposed && (gm == null || !gm.HasFlash)) { Jam(); return false; }
+            if (next == Exposure.Underexposed && (gm == null || !gm.HasNegative)) { Jam(); return false; }
             if (WouldJam(next)) { Jam(); return false; }
             Apply(next);
             return true;
@@ -50,6 +51,7 @@ namespace Darkroom
             {
                 var cand = (Exposure)((((int)Current + dir * i) % 3 + 3) % 3);
                 if (cand == Exposure.Overexposed && (gm == null || !gm.HasFlash)) continue;
+                if (cand == Exposure.Underexposed && (gm == null || !gm.HasNegative)) continue;
                 if (WouldJam(cand)) continue;
                 Apply(cand);
                 return;

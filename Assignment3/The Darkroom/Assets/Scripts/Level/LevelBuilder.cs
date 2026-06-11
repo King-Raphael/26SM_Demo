@@ -65,9 +65,23 @@ namespace Darkroom
 
         public static GameObject Box(string name, ExposureObjectType t, Vector2 c, Vector2 s)
         {
-            var go = NewTiledBox(name, c, s, TileFor(t), VisualFactory.OrderFor(t), Layers.World);
+            var go = NewTiledBox(name, c, s, TileFor(t, s), VisualFactory.OrderFor(t), Layers.World);
             var bc = go.AddComponent<BoxCollider2D>();
             bc.size = s;
+
+            // catch-light along walkable tops (cinematic restyle)
+            if (t == ExposureObjectType.StaticGround && s.x >= 1f)
+            {
+                var edge = new GameObject("EdgeLight");
+                edge.transform.SetParent(go.transform, false);
+                edge.transform.localPosition = new Vector3(0f, s.y / 2f - 0.03f, 0f);
+                edge.transform.localScale = new Vector3(s.x, 0.06f, 1f);
+                var esr = edge.AddComponent<SpriteRenderer>();
+                esr.sprite = VisualFactory.WhiteSprite;
+                esr.sharedMaterial = VisualFactory.SpriteMat;
+                esr.color = new Color(0.30f, 0.30f, 0.34f, 0.6f);
+                esr.sortingOrder = VisualFactory.OrderGround + 1;
+            }
             if (t != ExposureObjectType.StaticGround)
             {
                 var eo = go.AddComponent<ExposureObject>();
@@ -91,27 +105,29 @@ namespace Darkroom
             return go;
         }
 
-        /// Soft additive-looking halo behind an object (just a faint quad).
+        /// Soft radial halo behind an object.
         static SpriteRenderer Halo(Transform parent, Vector2 size, Color color, int order)
         {
             var go = new GameObject("Glow");
             go.transform.SetParent(parent, false);
-            go.transform.localScale = new Vector3(size.x, size.y, 1f);
+            go.transform.localScale = new Vector3(size.x * 1.6f, size.y * 1.6f, 1f);
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = VisualFactory.WhiteSprite;
+            sr.sprite = PixelArt.SoftGlow;
             sr.sharedMaterial = VisualFactory.GlowMat;
             sr.color = color;
             sr.sortingOrder = order;
             return sr;
         }
 
-        static Sprite TileFor(ExposureObjectType t)
+        static Sprite TileFor(ExposureObjectType t, Vector2 s)
         {
             switch (t)
             {
                 case ExposureObjectType.DarkPath:      return PixelArt.DarkPathTile;
                 case ExposureObjectType.BrightBarrier: return PixelArt.BarrierTile;
-                default:                               return PixelArt.GroundTile;
+                default:
+                    // tall boxes read as brick walls, flat ones as concrete
+                    return s.y > s.x * 1.5f ? PixelArt.BrickTile : PixelArt.ConcreteTile;
             }
         }
 
@@ -179,17 +195,33 @@ namespace Darkroom
             var go = NewTiledBox(id, c, s, PixelArt.DoorTile, VisualFactory.OrderDoor, Layers.World);
             var bc = go.AddComponent<BoxCollider2D>();
             bc.size = s;
+
+            // two circular "speaker" lenses on the panel (concept-art look)
+            for (int i = 0; i < 2; i++)
+            {
+                var lens = new GameObject("Lens" + i);
+                lens.transform.SetParent(go.transform, false);
+                lens.transform.localPosition = new Vector3(0f, s.y * (i == 0 ? 0.18f : -0.10f), 0f);
+                lens.transform.localScale = new Vector3(s.x * 0.62f, s.x * 0.62f, 1f);
+                var lsr = lens.AddComponent<SpriteRenderer>();
+                lsr.sprite = PixelArt.Disc;
+                lsr.sharedMaterial = VisualFactory.SpriteMat;
+                lsr.color = new Color(0.10f, 0.10f, 0.12f, 1f);
+                lsr.sortingOrder = VisualFactory.OrderDoor + 1;
+            }
             return go.AddComponent<SensorDoor>();
         }
 
         public static GameObject Pickup(Ability a, Vector2 c)
         {
-            var go = new GameObject(a == Ability.Flash ? "Pickup_Flash" : "Pickup_Shutter");
+            var go = new GameObject("Pickup_" + a);
             go.layer = Layers.Triggers;
             go.transform.SetParent(_root, false);
             go.transform.position = new Vector3(c.x, c.y, 0f);
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = a == Ability.Flash ? PixelArt.FlashPickup : PixelArt.ShutterPickup;
+            sr.sprite = a == Ability.Flash ? PixelArt.FlashPickup
+                      : a == Ability.Shutter ? PixelArt.ShutterPickup
+                      : PixelArt.NegativePickup;
             sr.sharedMaterial = VisualFactory.GlowMat;
             sr.sortingOrder = VisualFactory.OrderPickup;
             var bc = go.AddComponent<BoxCollider2D>();
@@ -241,31 +273,47 @@ namespace Darkroom
 
         public static GameObject Exit(Vector2 c, Vector2 s)
         {
+            // a glowing white doorway (concept-art style)
             var go = new GameObject("LevelExit");
             go.layer = Layers.Triggers;
             go.transform.SetParent(_root, false);
             go.transform.position = new Vector3(c.x, c.y, 0f);
-            var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = PixelArt.ExitDoor;
-            sr.sharedMaterial = VisualFactory.SpriteMat;
-            sr.sortingOrder = VisualFactory.OrderExit;
             var bc = go.AddComponent<BoxCollider2D>();
             bc.size = s;
             bc.isTrigger = true;
             go.AddComponent<LevelExit>();
 
-            // pulsing safelight halo around the exit
-            var halo = Halo(go.transform, new Vector2(s.x + 1.4f, s.y + 1.0f),
-                new Color(0.545f, 0.10f, 0.10f, 0.15f), VisualFactory.OrderExit - 1);
+            // dark frame
+            var frame = new GameObject("Frame");
+            frame.transform.SetParent(go.transform, false);
+            frame.transform.localScale = new Vector3(s.x + 0.25f, s.y + 0.15f, 1f);
+            var fsr = frame.AddComponent<SpriteRenderer>();
+            fsr.sprite = VisualFactory.WhiteSprite;
+            fsr.sharedMaterial = VisualFactory.SpriteMat;
+            fsr.color = new Color(0.09f, 0.09f, 0.10f, 1f);
+            fsr.sortingOrder = VisualFactory.OrderExit - 1;
+
+            // blinding inner light
+            var inner = new GameObject("Inner");
+            inner.transform.SetParent(go.transform, false);
+            inner.transform.localScale = new Vector3(s.x * 0.78f, s.y * 0.94f, 1f);
+            var isr = inner.AddComponent<SpriteRenderer>();
+            isr.sprite = VisualFactory.WhiteSprite;
+            isr.sharedMaterial = VisualFactory.GlowMat;
+            isr.color = new Color(1f, 0.98f, 0.92f, 0.96f);
+            isr.sortingOrder = VisualFactory.OrderExit;
+
+            var halo = Halo(go.transform, new Vector2(s.x + 3.5f, s.y + 2.5f),
+                new Color(1f, 0.97f, 0.88f, 0.18f), VisualFactory.OrderExit - 2);
             var pulse = go.AddComponent<GlowPulse>();
             pulse.Target = halo;
-            pulse.Min = 0.10f;
-            pulse.Max = 0.22f;
+            pulse.Min = 0.12f;
+            pulse.Max = 0.24f;
             pulse.Speed = 1.6f;
             pulse.Light = LightDirector.CreatePoint(go.transform, Vector2.zero,
-                new Color(0.80f, 0.18f, 0.18f), 4.5f, 0.5f);
-            pulse.LightMin = 0.35f;
-            pulse.LightMax = 0.65f;
+                new Color(1f, 0.96f, 0.86f), 5f, 0.7f);
+            pulse.LightMin = 0.55f;
+            pulse.LightMax = 0.85f;
             return go;
         }
 

@@ -24,11 +24,11 @@ namespace Darkroom
             go.transform.position = new Vector3(
                 pos.x + Random.Range(-0.06f, 0.06f),
                 pos.y + Random.Range(-0.04f, 0.08f), 0f);
-            float s = Random.Range(0.04f, 0.09f);
+            float s = Random.Range(0.10f, 0.22f); // soft-glow sprite fades at its edges
             go.transform.localScale = new Vector3(s, s, 1f);
 
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = VisualFactory.WhiteSprite;
+            sr.sprite = PixelArt.SoftGlow;
             sr.sharedMaterial = VisualFactory.GlowMat;
             sr.color = color;
             sr.sortingOrder = VisualFactory.OrderStroke + 1;

@@ -46,9 +46,135 @@ namespace Darkroom
         static Color32 C(int rgb) =>
             new Color32((byte)((rgb >> 16) & 0xFF), (byte)((rgb >> 8) & 0xFF), (byte)(rgb & 0xFF), 255);
 
+        // ---------- noise ----------
+
+        static float Hash(int x, int y, int s)
+        {
+            unchecked
+            {
+                int h = x * 374761393 + y * 668265263 + s * 1442695041;
+                h = (h ^ (h >> 13)) * 1274126177;
+                return ((h ^ (h >> 16)) & 0x7FFFFFFF) / (float)int.MaxValue;
+            }
+        }
+
+        static float ValueNoise(float x, float y, int seed)
+        {
+            int x0 = Mathf.FloorToInt(x), y0 = Mathf.FloorToInt(y);
+            float fx = x - x0, fy = y - y0;
+            float a = Hash(x0, y0, seed), b = Hash(x0 + 1, y0, seed);
+            float c = Hash(x0, y0 + 1, seed), d = Hash(x0 + 1, y0 + 1, seed);
+            return Mathf.Lerp(Mathf.Lerp(a, b, fx), Mathf.Lerp(c, d, fx), fy);
+        }
+
         // ---------- world tiles (one tile = one world unit) ----------
 
         static Sprite _ground, _darkPath, _barrier, _door;
+        static Sprite _concrete, _brick, _lightCone, _coneShade;
+
+        /// Dark concrete with grime (cinematic restyle).
+        public static Sprite ConcreteTile
+        {
+            get
+            {
+                if (_concrete == null)
+                    _concrete = MakeTile("ConcreteTile", 64, 64f, (x, y) =>
+                    {
+                        float n = ValueNoise(x / 8f, y / 8f, 11) * 0.6f + ValueNoise(x / 3f, y / 3f, 23) * 0.4f;
+                        float v = 0.075f + n * 0.035f;
+                        if (ValueNoise(x / 16f, y / 5f, 37) > 0.88f) v *= 0.7f; // grime streaks
+                        byte g = (byte)(v * 255f);
+                        return new Color32(g, g, (byte)(g + 3), 255);
+                    });
+                return _concrete;
+            }
+        }
+
+        /// Very dark brick wall with mortar lines.
+        public static Sprite BrickTile
+        {
+            get
+            {
+                if (_brick == null)
+                    _brick = MakeTile("BrickTile", 64, 64f, (x, y) =>
+                    {
+                        int row = y / 16;
+                        int xo = (row % 2) * 16;
+                        bool mortar = (y % 16) < 2 || ((x + xo) % 32) < 2;
+                        if (mortar) return new Color32(0x0A, 0x0A, 0x0C, 255);
+                        float n = ValueNoise(x / 5f, y / 5f, 51);
+                        byte g = (byte)((0.085f + n * 0.03f) * 255f);
+                        return new Color32(g, g, (byte)(g + 2), 255);
+                    });
+                return _brick;
+            }
+        }
+
+        /// Soft lamp light cone (wide at the bottom, fading down).
+        public static Sprite LightCone
+        {
+            get
+            {
+                if (_lightCone == null)
+                {
+                    int w = 96, h = 128;
+                    var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+                    tex.filterMode = FilterMode.Bilinear;
+                    var px = new Color32[w * h];
+                    for (int y = 0; y < h; y++)
+                        for (int x = 0; x < w; x++)
+                        {
+                            float v = 1f - y / (float)h;             // 0 top (at the lamp) -> 1 bottom
+                            float halfW = Mathf.Lerp(0.10f, 0.48f, v) * w;
+                            float dx = Mathf.Abs(x - w / 2f);
+                            float a = dx < halfW
+                                ? Mathf.Pow(1f - dx / halfW, 1.4f) * Mathf.Pow(1f - v, 1.6f) * 0.55f
+                                : 0f;
+                            px[y * w + x] = new Color32(255, 244, 222, (byte)(a * 255f));
+                        }
+                    // texture row 0 is the BOTTOM: invert so the cone widens downward
+                    var flipped = new Color32[w * h];
+                    for (int y = 0; y < h; y++)
+                        for (int x = 0; x < w; x++)
+                            flipped[y * w + x] = px[(h - 1 - y) * w + x];
+                    tex.SetPixels32(flipped);
+                    tex.Apply();
+                    _lightCone = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 1f), 32f, 0, SpriteMeshType.FullRect);
+                    _lightCone.name = "LightCone";
+                }
+                return _lightCone;
+            }
+        }
+
+        /// Hanging lamp shade silhouette (truncated cone).
+        public static Sprite ConeShade
+        {
+            get
+            {
+                if (_coneShade == null)
+                {
+                    int w = 48, h = 28;
+                    var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+                    tex.filterMode = FilterMode.Bilinear;
+                    var px = new Color32[w * h];
+                    for (int y = 0; y < h; y++)
+                        for (int x = 0; x < w; x++)
+                        {
+                            float v = y / (float)h;                  // 0 bottom -> 1 top
+                            float halfW = Mathf.Lerp(0.48f, 0.10f, v) * w;
+                            float dx = Mathf.Abs(x - w / 2f);
+                            bool inside = dx < halfW;
+                            byte g = (byte)(inside ? (y < 3 ? 0x2E : 0x17) : 0);
+                            px[y * w + x] = new Color32(g, g, (byte)(g + 2), (byte)(inside ? 255 : 0));
+                        }
+                    tex.SetPixels32(px);
+                    tex.Apply();
+                    _coneShade = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0f), 48f, 0, SpriteMeshType.FullRect);
+                    _coneShade.name = "ConeShade";
+                }
+                return _coneShade;
+            }
+        }
 
         /// Stone blocks: grout lines + deterministic speckle.
         public static Sprite GroundTile
@@ -85,17 +211,18 @@ namespace Darkroom
             }
         }
 
-        /// Near-white with vertical light streaks.
+        /// Pale fog-glass panel: translucent vertical sheen (cinematic restyle).
         public static Sprite BarrierTile
         {
             get
             {
                 if (_barrier == null)
-                    _barrier = MakeTile("BarrierTile", 12, 12f, (x, y) =>
+                    _barrier = MakeTile("BarrierTile", 32, 32f, (x, y) =>
                     {
-                        if (x % 4 == 1) return C(0xFBFBFB);
-                        if (x % 4 == 3) return C(0xE0E0E0);
-                        return C(0xEDEDED);
+                        float sheen = 0.5f + 0.5f * Mathf.Sin(x * 0.7f);
+                        float n = ValueNoise(x / 6f, y / 6f, 71);
+                        byte a = (byte)(Mathf.Clamp01(0.72f + sheen * 0.18f + n * 0.08f) * 255f);
+                        return new Color32(0xE9, 0xE9, 0xE6, a);
                     });
                 return _barrier;
             }
@@ -166,6 +293,94 @@ namespace Darkroom
                         { 'C', C(0x3B3B3B) }, { 'L', C(0x9FD8E6) }, { 'P', C(0x1E2A33) }, { 'T', C(0x575757) },
                     }, 16f);
                 return _shutter;
+            }
+        }
+
+        static Sprite _disc, _softGlow;
+
+        /// Anti-aliased filled circle (UI knobs, REC dot, lenses, bulbs).
+        public static Sprite Disc
+        {
+            get
+            {
+                if (_disc == null)
+                {
+                    int n = 64;
+                    var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
+                    tex.filterMode = FilterMode.Bilinear;
+                    var px = new Color32[n * n];
+                    for (int y = 0; y < n; y++)
+                        for (int x = 0; x < n; x++)
+                        {
+                            float dx = (x + 0.5f - n / 2f) / (n / 2f);
+                            float dy = (y + 0.5f - n / 2f) / (n / 2f);
+                            float r = Mathf.Sqrt(dx * dx + dy * dy);
+                            float a = Mathf.Clamp01((1f - r) * (n / 2f) * 0.5f);
+                            px[y * n + x] = new Color32(255, 255, 255, (byte)(a * 255f));
+                        }
+                    tex.SetPixels32(px);
+                    tex.Apply();
+                    _disc = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), n, 0, SpriteMeshType.FullRect);
+                    _disc.name = "Disc";
+                }
+                return _disc;
+            }
+        }
+
+        /// Soft radial falloff — halos, sparkles, light pools.
+        public static Sprite SoftGlow
+        {
+            get
+            {
+                if (_softGlow == null)
+                {
+                    int n = 128;
+                    var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
+                    tex.filterMode = FilterMode.Bilinear;
+                    var px = new Color32[n * n];
+                    for (int y = 0; y < n; y++)
+                        for (int x = 0; x < n; x++)
+                        {
+                            float dx = (x + 0.5f - n / 2f) / (n / 2f);
+                            float dy = (y + 0.5f - n / 2f) / (n / 2f);
+                            float r = Mathf.Clamp01(Mathf.Sqrt(dx * dx + dy * dy));
+                            float a = Mathf.Pow(1f - r, 2.2f);
+                            px[y * n + x] = new Color32(255, 255, 255, (byte)(a * 255f));
+                        }
+                    tex.SetPixels32(px);
+                    tex.Apply();
+                    _softGlow = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), n, 0, SpriteMeshType.FullRect);
+                    _softGlow.name = "SoftGlow";
+                }
+                return _softGlow;
+            }
+        }
+
+        static Sprite _negative;
+
+        /// A strip of film negative: dark frame, sprocket notches, pale window.
+        public static Sprite NegativePickup
+        {
+            get
+            {
+                if (_negative == null)
+                    _negative = FromMap("NegativePickup", new[]
+                    {
+                        "NNNNNNNNNN",
+                        "N.N.N.N.NN",
+                        "NWWWWWWWWN",
+                        "NWWWWWWWWN",
+                        "NWWBBWWWWN",
+                        "NWWWWWWWWN",
+                        "NWWWWWWWWN",
+                        "N.N.N.N.NN",
+                        "NNNNNNNNNN",
+                        "..........",
+                    }, new Dictionary<char, Color32>
+                    {
+                        { 'N', C(0x2A2A30) }, { 'W', C(0x9FB4D8) }, { 'B', C(0x1A1E28) },
+                    }, 18f);
+                return _negative;
             }
         }
 

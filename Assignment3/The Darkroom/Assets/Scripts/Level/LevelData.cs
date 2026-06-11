@@ -73,6 +73,8 @@ namespace Darkroom
     public class RoomDef
     {
         public string name;
+        public string title = "";
+        public string[] objectives = new string[0];
         public BoxDef[] boxes = new BoxDef[0];
         public EnemyDef[] enemies = new EnemyDef[0];
         public SensorDef[] sensors = new SensorDef[0];
@@ -85,6 +87,19 @@ namespace Darkroom
 
     public static class LevelData
     {
+        /// Left edge of each room (index = room number); used by the HUD
+        /// to show "ROOM N : TITLE" from the player's x position.
+        public static readonly float[] RoomStarts =
+            { -7.5f, 5.5f, 20f, 32.5f, 42f, 58.5f, 73f, 93.5f, 107.5f, 125f, 142.5f };
+
+        public static int RoomIndexAt(float x)
+        {
+            int idx = 0;
+            for (int i = 0; i < RoomStarts.Length; i++)
+                if (x >= RoomStarts[i]) idx = i;
+            return idx;
+        }
+
         const ExposureObjectType SG = ExposureObjectType.StaticGround;
         const ExposureObjectType DP = ExposureObjectType.DarkPath;
         const ExposureObjectType BB = ExposureObjectType.BrightBarrier;
@@ -95,17 +110,21 @@ namespace Darkroom
             new RoomDef
             {
                 name = "R0_CalibrationStrip",
+                title = "THE CALIBRATION STRIP",
+                objectives = new[] { "Collect the negative", "Stand on the dark, then let it go" },
                 boxes = new[]
                 {
                     new BoxDef("R0_LeftWall",   SG, -7f,   3f,   1f,    8f),
                     new BoxDef("R0_Floor",      SG, -0.5f, 0f,   12f,   1f),
                     new BoxDef("R0_DarkSample", DP,  1.0f, 1.6f, 1.4f,  0.35f),
                 },
+                // tutorial chain: move/jump -> negative (Under) -> flash (Over) -> shutter
+                pickups = new[] { new PickupDef(Ability.Negative, -1.2f, 1.2f) },
                 checkpoints = new[] { new CheckpointDef("CP_R0", -3f, 1.2f) },
                 hints = new[]
                 {
                     new HintDef("A/D or arrow keys to move. SPACE to jump.", -3.5f, 1.6f, 3f, 2f),
-                    new HintDef("Press 1: UNDEREXPOSED. Press 2: NORMAL. Each exposure changes what exists.", -0.5f, 1.6f, 3.5f, 2f),
+                    new HintDef("A film negative. Press 1: UNDEREXPOSED — see what hides in the dark.", -1.2f, 1.9f, 3f, 2f),
                     new HintDef("Stand on the dark platform. Then press 2. What is not lit, is not there.", 1.5f, 2.6f, 3.5f, 2f),
                 },
             },
@@ -114,6 +133,8 @@ namespace Darkroom
             new RoomDef
             {
                 name = "R1_InvisibleSteps",
+                title = "INVISIBLE STEPS",
+                objectives = new[] { "Cross the unlit path" },
                 boxes = new[]
                 {
                     // gap widened 4.5 -> 7.5 (a running jump covers ~5.6, with
@@ -137,6 +158,8 @@ namespace Darkroom
             new RoomDef
             {
                 name = "R2_WhiteWall",
+                title = "THE WHITE WALL",
+                objectives = new[] { "Collect the flash", "Burn through the barrier" },
                 boxes = new[]
                 {
                     new BoxDef("R2_Floor",      SG, 26.25f, 0f,    12.5f, 1f),
@@ -156,6 +179,8 @@ namespace Darkroom
             new RoomDef
             {
                 name = "R3_FirstStroke",
+                title = "FIRST STROKE",
+                objectives = new[] { "Collect the shutter", "Climb your own photograph" },
                 boxes = new[]
                 {
                     new BoxDef("R3_Floor",      SG, 36.25f, 0f,    7.5f, 1f),
@@ -174,6 +199,8 @@ namespace Darkroom
             new RoomDef
             {
                 name = "R4_ContactSheet",
+                title = "CONTACT SHEET",
+                objectives = new[] { "Two strokes to the top" },
                 boxes = new[]
                 {
                     new BoxDef("R4_Floor",     SG, 47f, 3f, 10f, 1f),
@@ -192,6 +219,8 @@ namespace Darkroom
             new RoomDef
             {
                 name = "R5_BlownBridge",
+                title = "BLOWN BRIDGE",
+                objectives = new[] { "Bridge the gap in full light" },
                 boxes = new[]
                 {
                     // entry raised +1.5 with the R4 ledge (gate bottom stays
@@ -213,6 +242,8 @@ namespace Darkroom
             new RoomDef
             {
                 name = "R6_SensorTest",
+                title = "SENSOR TEST",
+                objectives = new[] { "Stand on real ground", "Trip the photo sensor" },
                 boxes = new[]
                 {
                     new BoxDef("R6_StepDownA",    SG, 74.5f,  5.5f, 2f,   1f),
@@ -221,11 +252,13 @@ namespace Darkroom
                     new BoxDef("R6_DarkShelfA",   DP, 83f,    4.6f, 1.2f, 0.35f),
                     new BoxDef("R6_DarkShelfB",   DP, 84.5f,  5.6f, 1.2f, 0.35f),
                     new BoxDef("R6_SensorAnchor", SG, 86.2f,  6.3f, 1.5f, 0.5f),
-                    new BoxDef("R6_DoorCeiling",  SG, 88f,    6.4f, 3f,   0.4f),
+                    // raised + widened over the anchor: the old ceiling top (6.6) was
+                    // flush with the anchor (6.55) — you could walk over the door
+                    new BoxDef("R6_DoorCeiling",  SG, 87.5f,  8.4f, 5f,   0.4f),
                     new BoxDef("R6_PostFloor",    SG, 91.25f, 3f,   4.5f, 1f),
                 },
                 sensors = new[] { new SensorDef("R6_PhotoSensor", 86.2f, 7.2f, "Door_R6") },
-                doors = new[] { new DoorDef("Door_R6", 88f, 4.75f, 0.6f, 2.5f) },
+                doors = new[] { new DoorDef("Door_R6", 88f, 5.75f, 0.6f, 4.5f) }, // y 3.5-8.0, meets the raised ceiling
                 checkpoints = new[] { new CheckpointDef("CP_R6", 78.8f, 4.2f) },
                 hints = new[]
                 {
@@ -238,6 +271,8 @@ namespace Darkroom
             new RoomDef
             {
                 name = "R7_StillLife",
+                title = "STILL LIFE",
+                objectives = new[] { "Park a statue under the ledge" },
                 boxes = new[]
                 {
                     new BoxDef("R7_Floor",     SG, 99f,    3f, 11f, 1f),
@@ -255,6 +290,8 @@ namespace Darkroom
             new RoomDef
             {
                 name = "R8_NegativeTransfer",
+                title = "NEGATIVE TRANSFER",
+                objectives = new[] { "Land on real ground before you switch" },
                 boxes = new[]
                 {
                     new BoxDef("R8_Start",          SG, 109.5f, 6f,   4f,   1f),
@@ -277,6 +314,8 @@ namespace Darkroom
             new RoomDef
             {
                 name = "R9_TheDrop",
+                title = "THE DROP",
+                objectives = new[] { "Find the hidden hatch", "Let the floor go" },
                 boxes = new[]
                 {
                     new BoxDef("R9_ArrivalLedge",  SG, 125.9f,  9f,    1.8f, 1f),
@@ -304,6 +343,8 @@ namespace Darkroom
             new RoomDef
             {
                 name = "R10_FinalPrint",
+                title = "THE FINAL PRINT",
+                objectives = new[] { "Reveal, draw, anchor, burn", "Take the final photograph" },
                 boxes = new[]
                 {
                     new BoxDef("R10_StartPlatform", SG, 144.2f, 2.5f, 3.4f, 1f),

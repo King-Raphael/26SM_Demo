@@ -52,7 +52,7 @@ namespace Darkroom
             glowGO.transform.SetParent(go.transform, false);
             var glow = glowGO.AddComponent<LineRenderer>();
             glow.useWorldSpace = true;
-            glow.widthMultiplier = Width * 2.8f;
+            glow.widthMultiplier = Width * 3.6f;
             glow.widthCurve = taper;
             glow.sharedMaterial = VisualFactory.GlowMat;
             glow.sortingOrder = VisualFactory.OrderStroke - 1;
