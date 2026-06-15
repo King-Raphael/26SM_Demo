@@ -7,8 +7,12 @@ namespace Darkroom
     {
         public Transform Target;
 
-        const float MinX = -2f, MaxX = 170f, MinY = -1f, MaxY = 9f;
+        // default bounds frame the real level; the dev lab widens them
+        public float MinX = -2f, MaxX = 170f, MinY = -1f, MaxY = 9f;
         const float SmoothTime = 0.12f;
+
+        public void SetBounds(float minX, float maxX, float minY, float maxY)
+        { MinX = minX; MaxX = maxX; MinY = minY; MaxY = maxY; }
 
         /// Scripted moments (the Room 9 drop) stretch the follow so the
         /// camera visibly fails to keep up. 1 = normal.

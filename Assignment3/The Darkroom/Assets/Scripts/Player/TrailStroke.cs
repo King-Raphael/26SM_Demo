@@ -119,6 +119,11 @@ namespace Darkroom
             _light.transform.position = b.center;
             _light.pointLightOuterRadius = Mathf.Max(2.6f, b.extents.magnitude + 1.2f);
             _eo.enabled = true;           // registers + applies the matrix now
+            // the fixed stroke now counts as delivered light: sensors/umbra read
+            // it through the LightField, distance measured along the whole line.
+            if (LightField.Instance != null)
+                LightField.Instance.Register(_light.transform, _light.pointLightOuterRadius,
+                    () => _light.intensity, DistanceToPoint);
             return true;
         }
 
@@ -155,6 +160,34 @@ namespace Darkroom
                 if (b.Intersects(playerBounds)) return true;
             }
             return false;
+        }
+
+        /// Nearest distance from a world point to this stroke's polyline. The
+        /// LightField uses this so a long stroke lights along its whole length
+        /// (a centre-radius would over-reach space the line never touches).
+        public float DistanceToPoint(Vector2 p)
+        {
+            if (_pts.Count == 0) return float.PositiveInfinity;
+            if (_pts.Count == 1) return Vector2.Distance(p, _pts[0]);
+            float best = float.PositiveInfinity;
+            for (int i = 0; i < _pts.Count - 1; i++)
+            {
+                Vector2 a = _pts[i], ab = _pts[i + 1] - a;
+                float len2 = ab.sqrMagnitude;
+                float t = len2 < 1e-6f ? 0f : Mathf.Clamp01(Vector2.Dot(p - a, ab) / len2);
+                float d = Vector2.Distance(p, a + t * ab);
+                if (d < best) best = d;
+            }
+            return best;
+        }
+
+        // Strokes are destroyed three ways — budget-overflow despawn, respawn
+        // ClearAll, and too-short discard — and all route through Destroy, so a
+        // single OnDestroy deregisters the light from the field every time.
+        void OnDestroy()
+        {
+            if (LightField.Instance != null && _light != null)
+                LightField.Instance.Unregister(_light.transform);
         }
 
         /// Budget overflow: blink 0.5 s then despawn — deferred while stood on.

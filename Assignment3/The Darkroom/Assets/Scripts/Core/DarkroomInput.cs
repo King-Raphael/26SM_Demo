@@ -32,6 +32,11 @@ namespace Darkroom
         public static bool PausePressed => K != null && K.escapeKey.wasPressedThisFrame;
         public static bool MutePressed => K != null && K.mKey.wasPressedThisFrame;
 
+        // DEV room warp ( [ previous / ] next, P = mechanic lab ) — remove before final build
+        public static bool WarpPrevPressed => K != null && K.leftBracketKey.wasPressedThisFrame;
+        public static bool WarpNextPressed => K != null && K.rightBracketKey.wasPressedThisFrame;
+        public static bool LabWarpPressed => K != null && K.pKey.wasPressedThisFrame;
+
         public static bool DrawHeld
         {
             get

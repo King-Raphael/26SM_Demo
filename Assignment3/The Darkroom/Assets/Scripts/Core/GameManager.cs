@@ -33,6 +33,10 @@ namespace Darkroom
 
         public const float KillY = -10f;
 
+        /// DEV: room warp via [ and ] for testing (grants all abilities and
+        /// jumps to a room's first checkpoint). Set false before a final build.
+        public const bool DevWarpEnabled = true;
+
         void Awake() { Instance = this; }
 
         void Update()
@@ -55,6 +59,14 @@ namespace Darkroom
             else if (DarkroomInput.CycleForwardPressed) em.Cycle(1);
             else if (DarkroomInput.CycleBackPressed) em.Cycle(-1);
 
+            if (DevWarpEnabled)
+            {
+                int cur = LevelData.RoomIndexAt(Player.transform.position.x);
+                if (DarkroomInput.WarpNextPressed) { WarpToRoom(cur + 1); return; }
+                if (DarkroomInput.WarpPrevPressed) { WarpToRoom(cur - 1); return; }
+                if (DarkroomInput.LabWarpPressed) { WarpToLab(); return; }
+            }
+
             if (DarkroomInput.RestartPressed) { Kill(DeathCause.Restart); return; }
             if (Player.transform.position.y < KillY) Kill(DeathCause.Fall);
         }
@@ -67,6 +79,71 @@ namespace Darkroom
             CheckpointPos = p;
             if (HUDController.Instance != null) HUDController.Instance.CheckpointFlash(caption);
             if (AudioDirector.Instance != null) AudioDirector.Instance.PlayCheckpoint();
+        }
+
+        // ---------- DEV: room warp (testing only) ----------
+
+        /// Jump straight to a room: grants all abilities, lands on its first
+        /// checkpoint, clears live strokes and resets exposure. [ prev / ] next.
+        public void WarpToRoom(int room)
+        {
+            if (Player == null || HasWon || IsCinematic || IsRespawning) return;
+            int maxRoom = Mathf.Min(LevelData.Rooms.Length - 1, Bootstrap.BuildThroughRoomCount);
+            room = Mathf.Clamp(room, 0, maxRoom);
+
+            HasNegative = true; HasFlash = true; HasShutter = true;
+            OnRespawn?.Invoke(); // clear live strokes / transient light state
+
+            Vector2 pos = RoomWarpPos(room);
+            InitCheckpoint(pos);
+            Player.Teleport(pos);
+            if (ExposureManager.Instance != null) ExposureManager.Instance.ForceSet(Exposure.Normal);
+            SnapCamera(-2f, 170f, -1f, 9f); // restore the real-level bounds
+
+            var hud = HUDController.Instance;
+            if (hud != null)
+            {
+                hud.RefreshAbilityHud();
+                hud.ShowBanner("DEV WARP → FRAME " + (room + 1) + " : " + LevelData.Rooms[room].title);
+            }
+        }
+
+        static Vector2 RoomWarpPos(int room)
+        {
+            var cps = LevelData.Rooms[room].checkpoints;
+            if (cps.Length > 0) return new Vector2(cps[0].cx, cps[0].cy);
+            return new Vector2(LevelData.RoomStarts[room] + 1f, 2f);
+        }
+
+        /// Jump to the dev mechanic sandbox (built only when DevWarpEnabled).
+        public void WarpToLab()
+        {
+            if (Player == null || HasWon || IsCinematic || IsRespawning) return;
+            HasNegative = true; HasFlash = true; HasShutter = true;
+            OnRespawn?.Invoke();
+            Vector2 pos = new Vector2(394f, 4.5f);
+            InitCheckpoint(pos);
+            Player.Teleport(pos);
+            if (ExposureManager.Instance != null) ExposureManager.Instance.ForceSet(Exposure.Normal);
+            SnapCamera(-2f, 452f, -1f, 12f); // the lab lives far past the real-level bounds
+            var hud = HUDController.Instance;
+            if (hud != null)
+            {
+                hud.RefreshAbilityHud();
+                hud.ShowBanner("DEV LAB — mechanic sandbox ([ to leave)");
+            }
+        }
+
+        // DEV: widen the camera bounds to a region and snap onto the player, so
+        // a warp far outside the real-level bounds doesn't leave them off-screen.
+        static void SnapCamera(float minX, float maxX, float minY, float maxY)
+        {
+            var cam = Camera.main;
+            if (cam == null) return;
+            var follow = cam.GetComponent<CameraFollow>();
+            if (follow == null) return;
+            follow.SetBounds(minX, maxX, minY, maxY);
+            follow.Snap();
         }
 
         public void Unlock(Ability a)

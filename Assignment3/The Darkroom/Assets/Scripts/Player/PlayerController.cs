@@ -22,6 +22,7 @@ namespace Darkroom
         readonly Collider2D[] _groundHits = new Collider2D[8];
         int _groundHitCount;
         ContactFilter2D _groundFilter;
+        Vector2 _groundNormal = Vector2.up;
 
         public static PlayerController Create(Vector2 pos)
         {
@@ -47,8 +48,12 @@ namespace Darkroom
             go.AddComponent<TrailSystem>();
             PlayerAnimator.Attach(pc);
             // the photographer's own faint glow: never fully blind in Under
-            LightDirector.CreatePoint(go.transform, Vector2.zero,
+            var glow = LightDirector.CreatePoint(go.transform, Vector2.zero,
                 new Color(0.92f, 0.90f, 0.84f), 2.8f, 0.35f);
+            // count this glow as puzzle-light, but with a small reach so the
+            // player alone never trips a shadowed meter — you must still draw.
+            if (LightField.Instance != null)
+                LightField.Instance.Register(glow.transform, 1.5f, () => glow.intensity);
             return pc;
         }
 
@@ -76,9 +81,24 @@ namespace Darkroom
             if (IsGrounded) _coyote = CoyoteTime;
             else _coyote -= Time.fixedDeltaTime;
 
+            bool jumping = _jumpBuffer > 0f && (IsGrounded || _coyote > 0f);
             var v = Body.linearVelocity;
-            v.x = _moveX * MoveSpeed;
-            if (_jumpBuffer > 0f && (IsGrounded || _coyote > 0f))
+
+            if (IsGrounded && !jumping && _groundNormal.y > 0.35f)
+            {
+                // walk ALONG the surface: on flat ground the tangent is
+                // horizontal and y stays 0 (identical to before), on a slope it
+                // carries you up/down so inclines are walkable, and zero input
+                // means zero velocity so the frictionless body never slides.
+                Vector2 tangent = new Vector2(_groundNormal.y, -_groundNormal.x);
+                v = tangent * (_moveX * MoveSpeed);
+            }
+            else
+            {
+                v.x = _moveX * MoveSpeed;
+            }
+
+            if (jumping)
             {
                 v.y = JumpForce;
                 _jumpBuffer = 0f;
@@ -95,6 +115,14 @@ namespace Darkroom
             Vector2 feet = Body.position + new Vector2(0f, -HalfHeight - 0.02f);
             _groundHitCount = Physics2D.OverlapBox(feet, new Vector2(0.6f, 0.08f), 0f, _groundFilter, _groundHits);
             IsGrounded = _groundHitCount > 0;
+
+            // surface normal (for walking slopes); flat or unknown stays "up"
+            _groundNormal = Vector2.up;
+            if (IsGrounded)
+            {
+                var hit = Physics2D.Raycast(Body.position, Vector2.down, HalfHeight + 0.25f, Layers.GroundMask);
+                if (hit.collider != null && hit.normal.y > 0.01f) _groundNormal = hit.normal;
+            }
         }
 
         /// True while the grounded check currently touches this collider

@@ -24,6 +24,18 @@ namespace Darkroom
                 var room = rooms[r];
                 foreach (var b in room.boxes)
                     Box(b.name, b.type, new Vector2(b.cx, b.cy), new Vector2(b.w, b.h));
+                foreach (var u in room.umbrals)
+                    Umbral(u.name, new Vector2(u.cx, u.cy), new Vector2(u.w, u.h), u.threshold);
+                foreach (var l in room.lifts)
+                    Lift(l.name, l.cx, l.topY, l.bottomY, new Vector2(l.w, l.h));
+                foreach (var bn in room.burns)
+                    BurnWall(bn.name, new Vector2(bn.cx, bn.cy), new Vector2(bn.w, bn.h));
+                foreach (var br in room.bridges)
+                    LightBridge(br.name, new Vector2(br.cx, br.cy), new Vector2(br.w, br.h));
+                foreach (var rl in room.riseLifts)
+                    LightLift(rl.name, rl.cx, rl.topY, rl.bottomY, new Vector2(rl.w, rl.h));
+                foreach (var t in room.trails)
+                    Trail(t.name, t.points);
                 foreach (var e in room.enemies)
                     Enemy(e.name, new Vector2(e.cx, e.cy), e.range, e.speed);
                 foreach (var d in room.doors)
@@ -46,7 +58,7 @@ namespace Darkroom
                     doorMap.TryGetValue(s.doorId, out var door);
                     if (door == null)
                         Debug.LogError("[LevelBuilder] Sensor " + s.name + " references missing door " + s.doorId);
-                    Sensor(s.name, new Vector2(s.cx, s.cy), door);
+                    Sensor(s.name, new Vector2(s.cx, s.cy), door, s.mode, s.lux);
                 }
             }
 
@@ -66,7 +78,61 @@ namespace Darkroom
                 Debug.Log("[LevelBuilder] Demo build: rooms 0-" + last + " only.");
             }
 
+            // dev mechanic sandbox (only while the dev warp is enabled)
+            if (GameManager.DevWarpEnabled) BuildDevSandbox();
+
             return rootGO;
+        }
+
+        /// A development-only sandbox far to the right (x ~392+), reached with
+        /// the lab warp key. Five labeled stations for the new exposure verbs.
+        /// Not part of the 11-frame game; never built when DevWarpEnabled=false.
+        static void BuildDevSandbox()
+        {
+            const ExposureObjectType SG = ExposureObjectType.StaticGround;
+
+            // platforms at y3.5 with GAPS the new verbs must cross. A fall is
+            // not scenery here — it drops to the void and respawns you at the
+            // lab start (P also re-warps here any time).
+            Box("Lab_Start", SG, new Vector2(394f, 3f), new Vector2(8f, 1f)); // x390-398
+            Hint("DEV LAB — try each verb left → right. Fall = back to start · [ to leave.", new Vector2(394f, 4.7f), new Vector2(4f, 2f));
+
+            // 1) DARK TRAIL — a streak bridges the gap, solid only in UNDER.
+            // Starts flush with the floor so you just WALK across (slopes work).
+            Box("Lab_T_R", SG, new Vector2(404f, 3f), new Vector2(4f, 1f)); // x402-406
+            Trail("Lab_Trail", new[]
+            {
+                new Vector2(398f, 3.5f), new Vector2(400f, 4.4f), new Vector2(402f, 3.5f),
+            });
+            Hint("DARK TRAIL · press 1 (UNDER): a streak bridges the gap — just walk across.", new Vector2(400f, 5.4f), new Vector2(3.6f, 2f));
+
+            // 2) LIGHT BRIDGE — light fills the gap, solid only in OVER, top flush
+            Box("Lab_B_R", SG, new Vector2(412f, 3f), new Vector2(4f, 1f)); // x410-414
+            LightBridge("Lab_Bridge", new Vector2(408f, 3.3f), new Vector2(4f, 0.4f)); // x406-410, top 3.5
+            Hint("LIGHT BRIDGE · press 3 (OVER): light fills the gap — cross while lit.", new Vector2(408f, 5.4f), new Vector2(3.6f, 2f));
+
+            // shared floor for the last three stations
+            Box("Lab_Floor2", SG, new Vector2(427f, 3f), new Vector2(26f, 1f)); // x414-440
+
+            // 3) BURN PAPER — hold OVER to burn through; the guard wakes
+            BurnWall("Lab_BurnWall", new Vector2(419f, 4.5f), new Vector2(0.6f, 3f));
+            Box("Lab_Burn_Ceil", SG, new Vector2(419f, 6.4f), new Vector2(2f, 0.4f));
+            Enemy("Lab_Burn_Guard", new Vector2(422f, 4f), 1f, 1f);
+            Hint("BURN PAPER · hold OVER (3) by the wall ~1.5s to burn a hole — OVER wakes the guard.", new Vector2(418f, 5.6f), new Vector2(4.2f, 2f));
+
+            // 4) FIX / 定影 — flash OVER near the ghosts to PRINT them solid
+            Box("Lab_F_Shelf", SG, new Vector2(430f, 7f), new Vector2(3f, 0.4f));
+            Latent("Lab_F_S1", new Vector2(426f, 4.4f), new Vector2(1.4f, 0.4f));
+            Latent("Lab_F_S2", new Vector2(427.6f, 5.5f), new Vector2(1.4f, 0.4f));
+            Latent("Lab_F_S3", new Vector2(429.2f, 6.6f), new Vector2(1.4f, 0.4f));
+            Hint("FIX / 定影 · flash OVER (3) near the faint steps to PRINT them solid, then climb.", new Vector2(425f, 5.6f), new Vector2(4.2f, 2f));
+
+            // 5) RISE LIFT / 光浮力 — press 3 (OVER): a light slab rises
+            Box("Lab_R_Shelf", SG, new Vector2(437f, 8.1f), new Vector2(3f, 0.4f));
+            LightLift("Lab_RiseLift", 434f, 8f, 3.8f, new Vector2(2.4f, 0.6f));
+            Hint("RISE LIFT / 光浮力 · press 3 (OVER): a light slab rises — ride it up.", new Vector2(433f, 5.4f), new Vector2(4.2f, 2f));
+
+            Hint("END · press [ to leave, P to reset.", new Vector2(438f, 8.7f), new Vector2(3.5f, 2f));
         }
 
         // ---------- helpers (spec 8.14) ----------
@@ -174,6 +240,133 @@ namespace Darkroom
         public static GameObject Static(string name, Vector2 c, Vector2 s)
             => Box(name, ExposureObjectType.StaticGround, c, s);
 
+        /// A wall of shadow: solid until a delivered stroke lights it. Drawn on
+        /// GlowMat so it stays readable even in the dark (a shadow you can see),
+        /// and on the World layer so the player collides while it is sealed.
+        public static GameObject Umbral(string name, Vector2 c, Vector2 s, float threshold)
+        {
+            var go = NewTiledBox(name, c, s, PixelArt.BarrierTile, VisualFactory.OrderExposure, Layers.World);
+            var sr = go.GetComponent<SpriteRenderer>();
+            sr.sharedMaterial = VisualFactory.GlowMat;
+            sr.color = new Color(0.16f, 0.13f, 0.22f, 1f); // deep-violet shadow matter
+
+            var bc = go.AddComponent<BoxCollider2D>();
+            bc.size = s;
+
+            // a cold halo so the shade reads against the near-black background
+            Halo(go.transform, new Vector2(s.x + 0.7f, s.y + 0.7f),
+                new Color(0.24f, 0.20f, 0.36f, 0.22f), VisualFactory.OrderExposure - 1);
+
+            var ub = go.AddComponent<UmbralBarrier>();
+            ub.retractThreshold = threshold;
+            ub.boxSize = s;
+            return go;
+        }
+
+        /// A shadow lift: a kinematic shadow slab that sinks in UNDER, holds in
+        /// NORMAL, and dissolves in OVER (dropping its rider). Built at topY.
+        public static GameObject Lift(string name, float x, float topY, float bottomY, Vector2 s)
+        {
+            // GlowMat (unlit) so it reads in the dark; no halo, so it leaves
+            // nothing visible once it fades out in NORMAL/OVER
+            var go = NewTiledBox(name, new Vector2(x, topY), s, PixelArt.BarrierTile, VisualFactory.OrderExposure, Layers.World);
+            var sr = go.GetComponent<SpriteRenderer>();
+            sr.sharedMaterial = VisualFactory.GlowMat;
+            sr.color = new Color(0.30f, 0.28f, 0.45f, 1f); // shadow slab, readable in UNDER
+
+            var bc = go.AddComponent<BoxCollider2D>();
+            bc.size = s;
+            var rb = go.AddComponent<Rigidbody2D>();
+            rb.bodyType = RigidbodyType2D.Kinematic;
+            rb.interpolation = RigidbodyInterpolation2D.Interpolate; // smooth ride
+
+            var lift = go.AddComponent<ShadowLift>();
+            lift.topY = topY;
+            lift.bottomY = bottomY;
+            lift.boxSize = s;
+            return go;
+        }
+
+        // ---------- new exposure mechanics ----------
+
+        /// A pre-authored dark light-streak (DarkTrail): solid + visible only in
+        /// UNDER, a smooth tapered glowing curve. Points are world-space.
+        public static GameObject Trail(string name, Vector2[] worldPoints)
+        {
+            var go = new GameObject(name);
+            go.layer = Layers.Strokes; // collides with the player only, like a stroke
+            go.transform.SetParent(_root, false);
+            go.SetActive(false);       // configure points before OnEnable builds it
+            var dt = go.AddComponent<DarkTrail>();
+            dt.points = worldPoints;
+            go.SetActive(true);
+            return go;
+        }
+
+        /// A bridge of light: solid only in OVER (an ExposureObject of type
+        /// BrightStroke), the bright twin of a dark platform.
+        public static GameObject LightBridge(string name, Vector2 c, Vector2 s)
+        {
+            var go = NewTiledBox(name, c, s, PixelArt.BarrierTile, VisualFactory.OrderStroke, Layers.World);
+            var sr = go.GetComponent<SpriteRenderer>();
+            sr.sharedMaterial = VisualFactory.GlowMat;
+            sr.color = VisualFactory.BrightStroke; // warm cream glow
+            var bc = go.AddComponent<BoxCollider2D>();
+            bc.size = s;
+            var eo = go.AddComponent<ExposureObject>();
+            eo.type = ExposureObjectType.BrightStroke;
+            eo.boxSize = s;
+            return go;
+        }
+
+        /// A white sheet that OVER burns through (BurnPaper): hold OVER nearby
+        /// ~1.5 s and it burns a permanent hole. Pair with an enemy for tension.
+        public static GameObject BurnWall(string name, Vector2 c, Vector2 s)
+        {
+            var go = NewTiledBox(name, c, s, PixelArt.BarrierTile, VisualFactory.OrderExposure, Layers.World);
+            go.GetComponent<SpriteRenderer>().color = new Color(0.92f, 0.92f, 0.90f, 1f); // white paper
+            var bc = go.AddComponent<BoxCollider2D>();
+            bc.size = s;
+            var bp = go.AddComponent<BurnPaper>();
+            bp.boxSize = s;
+            return go;
+        }
+
+        /// A latent platform (FixPlatform): a faint ghost until you flash OVER
+        /// near it, which prints it permanently solid.
+        public static GameObject Latent(string name, Vector2 c, Vector2 s)
+        {
+            var go = NewTiledBox(name, c, s, PixelArt.ConcreteTile, VisualFactory.OrderGround, Layers.World);
+            go.GetComponent<SpriteRenderer>().color = new Color(0.55f, 0.78f, 0.95f, 1f); // cool latent tint
+            var bc = go.AddComponent<BoxCollider2D>();
+            bc.size = s;
+            var fp = go.AddComponent<FixPlatform>();
+            fp.boxSize = s;
+            return go;
+        }
+
+        /// A light lift (RiseLift): the mirror of the shadow lift — real only in
+        /// OVER, rises from bottomY up to topY. Built at the bottom.
+        public static GameObject LightLift(string name, float x, float topY, float bottomY, Vector2 s)
+        {
+            var go = NewTiledBox(name, new Vector2(x, bottomY), s, PixelArt.BarrierTile, VisualFactory.OrderStroke, Layers.World);
+            var sr = go.GetComponent<SpriteRenderer>();
+            sr.sharedMaterial = VisualFactory.GlowMat;
+            sr.color = new Color(1f, 0.95f, 0.78f, 1f); // warm light slab
+
+            var bc = go.AddComponent<BoxCollider2D>();
+            bc.size = s;
+            var rb = go.AddComponent<Rigidbody2D>();
+            rb.bodyType = RigidbodyType2D.Kinematic;
+            rb.interpolation = RigidbodyInterpolation2D.Interpolate;
+
+            var rl = go.AddComponent<RiseLift>();
+            rl.topY = topY;
+            rl.bottomY = bottomY;
+            rl.boxSize = s;
+            return go;
+        }
+
         public static GameObject Enemy(string name, Vector2 c, float patrolRange, float speed)
         {
             var go = new GameObject(name);
@@ -203,14 +396,16 @@ namespace Darkroom
             return go;
         }
 
-        public static GameObject Sensor(string name, Vector2 c, SensorDoor door)
+        public static GameObject Sensor(string name, Vector2 c, SensorDoor door, int mode = 0, float lux = 0.6f)
         {
+            bool lightMeter = mode == 1; // LocalLux: reads delivered light, not OVER
             var go = NewSpriteBox(name, c, Vector2.one, VisualFactory.SensorInactive, VisualFactory.OrderSensor, Layers.Triggers);
             var bc = go.AddComponent<BoxCollider2D>();
             bc.size = Vector2.one;
             bc.isTrigger = true;
 
-            // red accent bar (visible once active)
+            // accent bar (visible once active): warm for photo sensors, cool
+            // cyan for light meters so the two devices read as different tools
             var accentGO = new GameObject("Accent");
             accentGO.transform.SetParent(go.transform, false);
             accentGO.transform.localPosition = new Vector3(0f, 0.42f, 0f);
@@ -218,14 +413,30 @@ namespace Darkroom
             var accent = accentGO.AddComponent<SpriteRenderer>();
             accent.sprite = VisualFactory.WhiteSprite;
             accent.sharedMaterial = VisualFactory.SpriteMat;
-            accent.color = VisualFactory.SafelightRed;
+            accent.color = lightMeter ? VisualFactory.DarkStroke : VisualFactory.SafelightRed;
             accent.sortingOrder = VisualFactory.OrderSensor + 1;
+
+            // a light meter wears a small cool "iris" so the player knows OVER
+            // alone won't trip it — it is waiting for light to be brought to it
+            if (lightMeter)
+            {
+                var iris = new GameObject("Iris");
+                iris.transform.SetParent(go.transform, false);
+                iris.transform.localScale = new Vector3(0.5f, 0.5f, 1f);
+                var isr = iris.AddComponent<SpriteRenderer>();
+                isr.sprite = PixelArt.Disc;
+                isr.sharedMaterial = VisualFactory.GlowMat;
+                isr.color = new Color(VisualFactory.DarkStroke.r, VisualFactory.DarkStroke.g, VisualFactory.DarkStroke.b, 0.5f);
+                isr.sortingOrder = VisualFactory.OrderSensor + 1;
+            }
 
             var sensor = go.AddComponent<PhotoSensor>();
             sensor.Door = door;
+            sensor.mode = (PhotoSensor.SensorMode)mode;
+            sensor.luxThreshold = lux;
             sensor.Init(go.GetComponent<SpriteRenderer>(), accent);
             sensor.ActivateLight = LightDirector.CreatePoint(go.transform, Vector2.zero,
-                new Color(1f, 0.93f, 0.78f), 2.5f, 0.5f);
+                lightMeter ? new Color(0.62f, 0.85f, 0.90f) : new Color(1f, 0.93f, 0.78f), 2.5f, 0.5f);
             sensor.ActivateLight.enabled = false;
             return go;
         }

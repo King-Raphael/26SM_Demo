@@ -18,6 +18,10 @@ namespace Darkroom
         const float ShaftMinX = 126.8f, ShaftMaxX = 129.6f;
         const float ShaftMinY = 0f, ShaftMaxY = 8f;
         const float CorridorMinX = 125f, CorridorMaxX = 142f;
+        // the blackout must start only once she is on the SOLID corridor (past
+        // the shadow lift's landing) — locking to NORMAL while she still stood
+        // on the UNDER-only lift would vanish it and drop her into the void
+        const float CorridorLandX = 129.6f;
         const float RelightX = 138.5f; // comfortably before the relocated stairs hint
         const float FuseSeconds = 25f; // absolute cap: the dark never outlives this
 
@@ -114,19 +118,19 @@ namespace Darkroom
             if (gm == null || gm.Player == null || gm.HasWon) return;
             var p = gm.Player.transform.position;
 
-            // fall breath: wind up, camera trails the drop
+            // descent breath: wind up, camera trails the drop. Position-based
+            // (not velocity) so it arms for the slow shadow-lift descent too.
             if (_fallArmed && p.x > ShaftMinX && p.x < ShaftMaxX
-                && p.y > ShaftMinY && p.y < ShaftMaxY
-                && gm.Player.Body.linearVelocity.y < -2f)
+                && p.y > ShaftMinY && p.y < 6f)
             {
                 _fallArmed = false;
                 if (AudioDirector.Instance != null) AudioDirector.Instance.SetWind(0.3f);
                 if (_cam != null) _cam.LagScale = 2.4f;
             }
 
-            // touchdown in the corridor starts the blackout
+            // touchdown on the solid corridor starts the blackout
             if (_mainArmed && !_fallArmed && p.y < 0f && gm.Player.IsGrounded
-                && p.x > CorridorMinX && p.x < CorridorMaxX)
+                && p.x > CorridorLandX && p.x < CorridorMaxX)
             {
                 _mainArmed = false;
                 _co = StartCoroutine(Run());

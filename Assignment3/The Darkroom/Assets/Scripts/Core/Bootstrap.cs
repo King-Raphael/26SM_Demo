@@ -27,6 +27,7 @@ namespace Darkroom
             managers.AddComponent<ExposureManager>();
             managers.AddComponent<AudioDirector>();
             managers.AddComponent<LightDirector>();
+            managers.AddComponent<LightField>();
             managers.AddComponent<PauseController>();
             managers.AddComponent<PhotoAlbum>();
 

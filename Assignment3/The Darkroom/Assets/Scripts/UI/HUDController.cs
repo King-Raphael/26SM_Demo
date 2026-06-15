@@ -811,6 +811,15 @@ namespace Darkroom
             StartCoroutine(FullFlashRoutine(0.2f));
         }
 
+        /// DEV: refresh ability-dependent HUD after a silent grant (room warp).
+        public void RefreshAbilityHud()
+        {
+            ApplyLocks();
+            RebuildControls();
+            var gm = GameManager.Instance;
+            if (_trailsGroup != null) _trailsGroup.SetActive(gm != null && gm.HasShutter);
+        }
+
         void ApplyLocks()
         {
             var gm = GameManager.Instance;
