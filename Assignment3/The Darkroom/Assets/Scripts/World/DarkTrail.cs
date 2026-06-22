@@ -46,15 +46,16 @@ namespace Darkroom
             glowGO.transform.SetParent(transform, false);
             _glow = glowGO.AddComponent<LineRenderer>();
             _glow.useWorldSpace = true;
-            _glow.widthMultiplier = Width * 3.6f;
+            _glow.widthMultiplier = Width * 5f;
             _glow.widthCurve = taper;
-            _glow.sharedMaterial = VisualFactory.GlowMat;
+            _glow.sharedMaterial = VisualFactory.BeamMat;       // feathered soft beam
+            _glow.textureMode = LineTextureMode.Stretch;
             _glow.sortingOrder = VisualFactory.OrderStroke - 1;
-            _glow.numCapVertices = 4;
-            _glow.numCornerVertices = 3;
+            _glow.numCapVertices = 6;
+            _glow.numCornerVertices = 4;
             _glow.positionCount = _pts.Count;
             for (int i = 0; i < _pts.Count; i++) _glow.SetPosition(i, _pts[i]);
-            var gc = c; gc.a = 0.30f;
+            var gc = c; gc.a = 0.55f;
             _glow.startColor = gc; _glow.endColor = gc;
 
             var ec = gameObject.AddComponent<EdgeCollider2D>();
@@ -78,7 +79,7 @@ namespace Darkroom
             {
                 float vis = Mathf.InverseLerp(0.18f, 1f, a); // 0 in NORMAL/OVER, 1 in UNDER
                 if (_lr != null) { var lc = _lr.startColor; lc.a = vis; _lr.startColor = lc; _lr.endColor = lc; }
-                if (_glow != null) { var g = _glow.startColor; g.a = vis * 0.30f; _glow.startColor = g; _glow.endColor = g; }
+                if (_glow != null) { var g = _glow.startColor; g.a = vis * 0.55f; _glow.startColor = g; _glow.endColor = g; }
                 if (_light != null) _light.intensity = vis * 0.6f;
             };
             eo.Reapply();

@@ -18,6 +18,8 @@ namespace Darkroom
     {
         public float retractThreshold = 0.6f;
         public Vector2 boxSize;
+        /// Fades added child detail (roil/rim/halo) in lockstep with the root.
+        public System.Action<float> onAlpha;
 
         const float SolidAlpha = 1f, GhostAlpha = 0.12f;
         const float Hysteresis = 0.1f;
@@ -75,6 +77,16 @@ namespace Darkroom
 
         void SetRetracted(bool r)
         {
+            if (r != _retracted)
+            {
+                // recoil (open) when light reaches it, flood back (seal) when it
+                // leaves — but stay silent on a respawn reset, where the wiped
+                // strokes re-seal every opened barrier at once
+                var gm = GameManager.Instance;
+                bool respawning = gm != null && gm.IsRespawning;
+                var ad = AudioDirector.Instance;
+                if (!respawning && ad != null) { if (r) ad.PlayUmbraOpen(); else ad.PlayUmbraSeal(); }
+            }
             _retracted = r;
             if (_col != null) _col.enabled = !r; // collider follows the logic at once
         }
@@ -93,10 +105,8 @@ namespace Darkroom
 
         void ApplyAlpha(float a)
         {
-            if (_sr == null) return;
-            var c = _baseColor;
-            c.a = a;
-            _sr.color = c;
+            if (_sr != null) { var c = _baseColor; c.a = a; _sr.color = c; }
+            onAlpha?.Invoke(a);
         }
     }
 }

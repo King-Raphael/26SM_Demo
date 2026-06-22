@@ -7,8 +7,12 @@ namespace Darkroom
     {
         public Transform Target;
 
-        // default bounds frame the real level; the dev lab widens them
+        // default bounds frame the real level; the dev lab widens them, and the
+        // prologue fences them to its isolated far-left pocket
         public float MinX = -2f, MaxX = 170f, MinY = -1f, MaxY = 9f;
+        // the warm "develop" tint tracks journey progress, NOT the live camera
+        // bounds — so fencing the prologue's bounds can't warm it (or Frames 1-10)
+        public float TintMinX = -2f, TintMaxX = 170f;
         const float SmoothTime = 0.12f;
 
         public void SetBounds(float minX, float maxX, float minY, float maxY)
@@ -36,7 +40,7 @@ namespace Darkroom
             if (_cam != null)
                 _cam.backgroundColor = Color.Lerp(
                     VisualFactory.Background, VisualFactory.BackgroundWarm,
-                    Mathf.Clamp01((p.x - MinX) / (MaxX - MinX)));
+                    Mathf.Clamp01((p.x - TintMinX) / (TintMaxX - TintMinX)));
         }
 
         public void Snap()

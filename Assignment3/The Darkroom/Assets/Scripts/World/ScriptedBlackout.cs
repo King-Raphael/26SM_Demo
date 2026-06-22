@@ -37,6 +37,9 @@ namespace Darkroom
         SpriteRenderer[] _glints;
         float[] _glintAlpha;
         Transform[] _shades;
+        SpriteRenderer _heldPhoto;   // middle shade cradles one of the player's own frames
+        bool _heldBuilt;
+        const int HeldFrame = 5;     // "First Stroke" — a frame from earlier in this very run
         CameraFollow _cam;
         Coroutine _co;
 
@@ -107,6 +110,23 @@ namespace Darkroom
                     esr.color = new Color(1f, 1f, 1f, 0f);
                     esr.sortingOrder = VisualFactory.OrderEnemy + 1;
                     _glints[i * 2 + e] = esr;
+                }
+
+                // the middle shade (i==1) cradles a developed print — one of the
+                // player's OWN earlier frames — so "the shades are her subjects" is a
+                // SEEN truth, not just a code comment. Self-lit (GlowMat, like the
+                // eyes) so it reads in the blackout; the texture is fetched lazily.
+                if (i == 1)
+                {
+                    var photoGO = new GameObject("HeldPhoto");
+                    photoGO.transform.SetParent(go.transform, false);
+                    photoGO.transform.localPosition = new Vector3(0f, -0.04f, 0f);
+                    photoGO.transform.localScale = new Vector3(0.10f, 0.10f, 1f);
+                    var psr = photoGO.AddComponent<SpriteRenderer>();
+                    psr.sharedMaterial = VisualFactory.GlowMat;
+                    psr.sortingOrder = VisualFactory.OrderEnemy + 1;
+                    psr.color = new Color(1f, 1f, 1f, 0f);
+                    _heldPhoto = psr;
                 }
             }
         }
@@ -200,6 +220,25 @@ namespace Darkroom
                 _glintAlpha[i] = a;
                 SetGlint(i, a);
             }
+
+            // develop the held print as she nears the middle shade. Fetched lazily
+            // (frame 5 was captured back in R5); stays invisible if the album never
+            // got it (skipped checkpoint or a failed render) — graceful by default.
+            if (_heldPhoto != null)
+            {
+                if (!_heldBuilt && PhotoAlbum.Instance != null)
+                {
+                    var tex = PhotoAlbum.Instance.Shot(HeldFrame);
+                    if (tex != null)
+                    {
+                        _heldPhoto.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height),
+                            new Vector2(0.5f, 0.5f), 100f);
+                        _heldBuilt = true;
+                    }
+                }
+                float a = _heldBuilt ? _glintAlpha[1] * 0.5f : 0f;
+                _heldPhoto.color = new Color(0.72f, 0.80f, 0.90f, a); // dim, cool — a developed ghost
+            }
         }
 
         void SetGlint(int i, float a)
@@ -234,6 +273,7 @@ namespace Darkroom
                 if (withSnap) ad.PlayClick(); // the world takes its picture back
             }
             for (int i = 0; i < _glintAlpha.Length; i++) { _glintAlpha[i] = 0f; SetGlint(i, 0f); }
+            if (_heldPhoto != null) { var c = _heldPhoto.color; c.a = 0f; _heldPhoto.color = c; }
             if (_cam != null) _cam.LagScale = 1f;
         }
 

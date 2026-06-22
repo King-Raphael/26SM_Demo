@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -14,10 +15,9 @@ namespace Darkroom
 
         public Transform CanvasRoot { get; private set; }
 
-        // full-screen layers
+        // full-screen layers (film grain + vignette now live in the URP post stack,
+        // driven by PostFXDirector — the HUD only keeps the instant transition layers)
         Image _overlay, _whiteFlash, _blackFade;
-        RawImage _grain, _vignette;
-        Texture2D[] _grainTex;
 
         // exposure slider
         RectTransform _sliderGroup, _knob;
@@ -41,6 +41,7 @@ namespace Darkroom
         Text _controlsText;
         CanvasGroup _controlsGroup;
         bool _controlsGone;
+        bool _prologueControls = true; // prologue HUD shows ONLY move/jump until Frame 1
 
         // bottom exposure card (tutorial only)
         CanvasGroup _cardGroup;
@@ -56,7 +57,8 @@ namespace Darkroom
         Text _bubbleText;
         Transform _bubbleAnchor;
         object _hintKey;
-        Coroutine _hintHideCo;
+        Coroutine _hintHideCo, _hintDeferCo;
+        readonly HashSet<object> _hintsHeard = new HashSet<object>(); // pop once per prompt
 
         // misc
         Text _timerText, _mutedText, _checkpointText, _checkpointCaption, _bannerText, _deathText, _jamText;
@@ -64,9 +66,25 @@ namespace Darkroom
         bool _jamNoteShown;
         Coroutine _overlayCo, _shakeCo, _bannerCo, _checkpointCo, _flashCo, _knobCo, _shutterCo, _controlsCo, _deathCo, _jamCo;
 
-        static readonly Color OverlayUnder = new Color(0.02f, 0.04f, 0.10f, 0.34f);
+        // cinematic flow: letterbox bars, boot fade-up, per-frame entry card
+        RectTransform _barTop, _barBottom;
+        Text _frameCard;
+        CanvasGroup _bubbleGroup;
+        bool _firstRoomShown;
+        Coroutine _letterboxCo, _frameCardCo, _bubbleFadeCo;
+
+        // Exposure tinting now lives in the URP post grade (PostFXDirector), which
+        // tints WITHOUT flattening the frame. These full-screen HUD washes sat on
+        // TOP of post (UI overlay) and lifted everything to a flat haze — kept only
+        // as a faint nudge.
+        static readonly Color OverlayUnder = new Color(0.02f, 0.04f, 0.10f, 0.10f);
         static readonly Color OverlayNormal = new Color(0f, 0f, 0f, 0f);
-        static readonly Color OverlayOver = new Color(1f, 0.95f, 0.84f, 0.26f);
+        static readonly Color OverlayOver = new Color(1f, 0.95f, 0.84f, 0.0f);
+        // The switch flash echoes its DESTINATION (same palette the overlay tint
+        // and the audio pitch encode): cool for Under, warm for Over, white for Normal.
+        static readonly Color FlashUnder = new Color(0.85f, 0.88f, 1f);
+        static readonly Color FlashNormal = new Color(1f, 1f, 1f);
+        static readonly Color FlashOver = new Color(1f, 0.98f, 0.92f);
         static readonly Color TextBright = new Color(0.93f, 0.93f, 0.91f, 1f);
         static readonly Color TextDim = new Color(0.45f, 0.45f, 0.45f, 1f);
         static readonly Color RecRed = new Color(0.85f, 0.15f, 0.13f, 1f);
@@ -80,6 +98,19 @@ namespace Darkroom
             "Stable and readable.\nNo trails can be drawn.",
             "Light burns through white barriers\nand wakes what sleeps.",
         };
+
+        // Darkroom-action vocabulary for the first minute (before the Flash pickup):
+        // the player is operating the room's light, not switching abstract "modes".
+        static readonly string[] ActionLabels = { "SAFELIGHT", "WORK LIGHT", "ENLARGER FLASH" };
+        static readonly string[] ExposureLabels = { "UNDER", "BALANCED", "OVER" };
+        static readonly string[] ActionBadges = { "SAFELIGHT", "WORK LIGHT", "ENLARGER FLASH" };
+        static readonly string[] ActionBodies =
+        {
+            "The print develops in the dark.\nHidden paths surface under safelight.",
+            "Raise the work light to read the room.\nThe real floor is always here.",
+            "A flash of the enlarger —\nlight burns, and wakes what sleeps.",
+        };
+        bool _exposureVocab; // false = darkroom-action labels (prologue / before Flash)
 
         public static HUDController Build()
         {
@@ -124,11 +155,14 @@ namespace Darkroom
             return img;
         }
 
-        public static Text NewText(string name, Transform parent, string content, int size, Color color, TextAnchor align)
+        /// display: use the cinematic face (FontLoader.Display) for narrative beats;
+        /// Mono (the camera-readout voice) otherwise. shadow: add a soft drop shadow
+        /// so titles read against the now-bloomed scene.
+        public static Text NewText(string name, Transform parent, string content, int size, Color color, TextAnchor align, bool display = false, bool shadow = false)
         {
             var rt = NewRect(name, parent);
             var txt = rt.gameObject.AddComponent<Text>();
-            txt.font = FontLoader.Mono;
+            txt.font = display ? FontLoader.Display : FontLoader.Mono;
             txt.text = content;
             txt.fontSize = size;
             txt.color = color;
@@ -136,6 +170,12 @@ namespace Darkroom
             txt.horizontalOverflow = HorizontalWrapMode.Wrap;
             txt.verticalOverflow = VerticalWrapMode.Overflow;
             txt.raycastTarget = false;
+            if (shadow)
+            {
+                var sh = rt.gameObject.AddComponent<Shadow>();
+                sh.effectColor = new Color(0f, 0f, 0f, 0.55f);
+                sh.effectDistance = new Vector2(1.5f, -1.5f);
+            }
             return txt;
         }
 
@@ -193,24 +233,6 @@ namespace Darkroom
             _overlay = NewImage("ExposureOverlay", CanvasRoot, OverlayNormal);
             Stretch(_overlay.rectTransform);
 
-            _grainTex = new Texture2D[3];
-            for (int g = 0; g < 3; g++) _grainTex[g] = MakeGrainTexture(g);
-            var grainRT = NewRect("FilmGrain", CanvasRoot);
-            Stretch(grainRT);
-            _grain = grainRT.gameObject.AddComponent<RawImage>();
-            _grain.texture = _grainTex[0];
-            _grain.color = new Color(1f, 1f, 1f, 0.022f);
-            _grain.raycastTarget = false;
-            _grain.uvRect = new Rect(0f, 0f, 8f, 4.5f);
-            StartCoroutine(GrainFlicker());
-
-            var vigRT = NewRect("Vignette", CanvasRoot);
-            Stretch(vigRT);
-            _vignette = vigRT.gameObject.AddComponent<RawImage>();
-            _vignette.texture = MakeVignetteTexture();
-            _vignette.color = new Color(1f, 1f, 1f, 0f);
-            _vignette.raycastTarget = false;
-
             BuildShutterFrame();
             BuildExposureSlider();
             BuildTrailsGroup();
@@ -225,18 +247,18 @@ namespace Darkroom
             var bannerBg = NewImage("Bg", bannerRT, PanelBg);
             Stretch(bannerBg.rectTransform);
             AddBorder(bannerRT, PanelBorder);
-            _bannerText = NewText("Banner", bannerRT, "", 24, new Color(1f, 0.95f, 0.84f, 1f), TextAnchor.MiddleCenter);
+            _bannerText = NewText("Banner", bannerRT, "", 25, new Color(1f, 0.95f, 0.84f, 1f), TextAnchor.MiddleCenter, display: true);
             Stretch(_bannerText.rectTransform);
             _bannerBox = bannerRT.gameObject;
             _bannerBox.SetActive(false);
 
-            _checkpointText = NewText("CheckpointFlash", CanvasRoot, "", 22, new Color(0.81f, 0.81f, 0.81f, 1f), TextAnchor.MiddleCenter);
+            _checkpointText = NewText("CheckpointFlash", CanvasRoot, "", 23, new Color(0.86f, 0.86f, 0.84f, 1f), TextAnchor.MiddleCenter, display: true);
             Place(_checkpointText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 200f), new Vector2(800f, 40f));
 
-            _checkpointCaption = NewText("CheckpointCaption", CanvasRoot, "", 19, new Color(0.62f, 0.62f, 0.60f, 1f), TextAnchor.MiddleCenter);
+            _checkpointCaption = NewText("CheckpointCaption", CanvasRoot, "", 19, new Color(0.62f, 0.62f, 0.60f, 1f), TextAnchor.MiddleCenter, display: true);
             Place(_checkpointCaption.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 170f), new Vector2(900f, 28f));
 
-            _deathText = NewText("DeathNote", CanvasRoot, "", 22, RecRed, TextAnchor.MiddleCenter);
+            _deathText = NewText("DeathNote", CanvasRoot, "", 22, RecRed, TextAnchor.MiddleCenter, display: true);
             Place(_deathText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 244f), new Vector2(900f, 36f));
 
             _jamText = NewText("JamNote", CanvasRoot, "", 18, new Color(0.62f, 0.62f, 0.60f, 1f), TextAnchor.MiddleCenter);
@@ -250,6 +272,20 @@ namespace Darkroom
 
             BuildPausePanel();
 
+            // cinematic letterbox bars (retracted by default; used at boot + finale)
+            _barTop = NewImage("LetterboxTop", CanvasRoot, Color.black).rectTransform;
+            _barTop.anchorMin = new Vector2(0f, 1f); _barTop.anchorMax = new Vector2(1f, 1f);
+            _barTop.pivot = new Vector2(0.5f, 1f);
+            _barTop.sizeDelta = new Vector2(0f, 0f); _barTop.anchoredPosition = Vector2.zero;
+            _barBottom = NewImage("LetterboxBottom", CanvasRoot, Color.black).rectTransform;
+            _barBottom.anchorMin = new Vector2(0f, 0f); _barBottom.anchorMax = new Vector2(1f, 0f);
+            _barBottom.pivot = new Vector2(0.5f, 0f);
+            _barBottom.sizeDelta = new Vector2(0f, 0f); _barBottom.anchoredPosition = Vector2.zero;
+
+            // centered "FRAME N" beat shown when crossing into a new frame
+            _frameCard = NewText("FrameCard", CanvasRoot, "", 30, new Color(0.92f, 0.90f, 0.85f, 0f), TextAnchor.MiddleCenter, display: true, shadow: true);
+            Place(_frameCard.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 188f), new Vector2(1300f, 46f));
+
             _blackFade = NewImage("BlackFade", CanvasRoot, new Color(0f, 0f, 0f, 0f));
             Stretch(_blackFade.rectTransform);
             _whiteFlash = NewImage("WhiteFlash", CanvasRoot, new Color(1f, 1f, 1f, 0f));
@@ -257,6 +293,7 @@ namespace Darkroom
 
             ApplyLocks();
             HighlightState(Exposure.Normal);
+            StartCoroutine(BootIn());
             StartCoroutine(TitleCard());
             StartCoroutine(RecBlink());
         }
@@ -305,7 +342,7 @@ namespace Darkroom
             ((Image)_knob.GetComponent<Image>()).sprite = PixelArt.Disc;
             Place(_knob, new Vector2(0.5f, 1f), new Vector2(KnobSlots[1], -35f), new Vector2(20f, 20f));
 
-            string[] names = { "UNDER", "BALANCED", "OVER" };
+            string[] names = ActionLabels; // darkroom vocab first; swaps after the Flash pickup
             for (int i = 0; i < 3; i++)
             {
                 _stateLabels[i] = NewText("State" + i, _sliderGroup, names[i], 20, TextDim, TextAnchor.MiddleCenter);
@@ -403,6 +440,7 @@ namespace Darkroom
             _bubble = NewRect("HintBubble", CanvasRoot);
             Place(_bubble, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(460f, 84f));
             _bubble.pivot = new Vector2(0.5f, 0f);
+            _bubbleGroup = _bubble.gameObject.AddComponent<CanvasGroup>();
             var bg = NewImage("Bg", _bubble, PanelBg);
             Stretch(bg.rectTransform);
             AddBorder(_bubble, PanelBorder);
@@ -410,7 +448,7 @@ namespace Darkroom
             var tail = NewImage("Tail", _bubble, PanelBg);
             Place(tail.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, -7f), new Vector2(16f, 16f));
             tail.rectTransform.localEulerAngles = new Vector3(0f, 0f, 45f);
-            _bubbleText = NewText("Text", _bubble, "", 20, TextBright, TextAnchor.MiddleCenter);
+            _bubbleText = NewText("Text", _bubble, "", 21, TextBright, TextAnchor.MiddleCenter, display: true);
             Stretch(_bubbleText.rectTransform);
             _bubbleText.rectTransform.offsetMin = new Vector2(16f, 8f);
             _bubbleText.rectTransform.offsetMax = new Vector2(-16f, -8f);
@@ -460,8 +498,8 @@ namespace Darkroom
             dim.color = new Color(0f, 0f, 0f, 0.62f);
             dim.raycastTarget = false;
 
-            var title = NewText("PauseTitle", rt, "PAUSED", 56, TextBright, TextAnchor.MiddleCenter);
-            Place(title.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 120f), new Vector2(600f, 80f));
+            var title = NewText("PauseTitle", rt, "PAUSED", 64, TextBright, TextAnchor.MiddleCenter, display: true, shadow: true);
+            Place(title.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 120f), new Vector2(600f, 90f));
 
             var help = NewText("PauseHelp", rt,
                 "MOVE  A/D or arrows        JUMP  Space\n" +
@@ -477,30 +515,51 @@ namespace Darkroom
             _pausePanel.SetActive(false);
         }
 
-        /// Boot card: only the promise, not the name. The name lands later,
-        /// the first time the player turns the world dark (TitleDrop).
+        /// Boot card: only the promise, not the name. A single faint line on the
+        /// black, glowing up out of the drips and the fan, dissolving as the room
+        /// develops up. The name lands later (TitleDrop), when she steps inside.
         IEnumerator TitleCard()
         {
-            var sub = NewText("TitleSub", CanvasRoot, "develop the world — fix the light", 26, new Color(0.62f, 0.62f, 0.60f, 1f), TextAnchor.MiddleCenter);
-            Place(sub.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 52f), new Vector2(1000f, 40f));
-            var roll = NewText("TitleRoll", CanvasRoot, "one roll. eleven frames.", 22, new Color(0.52f, 0.52f, 0.50f, 1f), TextAnchor.MiddleCenter);
-            Place(roll.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 12f), new Vector2(1000f, 32f));
+            var roll = NewText("TitleRoll", CanvasRoot, "one roll. eleven frames.", 24, new Color(0.62f, 0.62f, 0.60f, 0f), TextAnchor.MiddleCenter, display: true);
+            Place(roll.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 24f), new Vector2(1100f, 40f));
 
-            yield return new WaitForSeconds(2.0f);
-            float t = 0f;
-            while (t < 1.6f)
-            {
-                t += Time.deltaTime;
-                float a = Mathf.Lerp(1f, 0f, Mathf.Clamp01(t / 1.6f));
-                var c2 = sub.color; c2.a = a; sub.color = c2;
-                var c3 = roll.color; c3.a = a; roll.color = c3;
-                yield return null;
-            }
-            Destroy(sub.gameObject);
+            // faint: glow up on black, hold, then dissolve as the world fades in
+            yield return FadeText(roll, 0f, 0.55f, 1.2f);
+            yield return new WaitForSeconds(1.4f);
+            yield return FadeText(roll, 0.55f, 0f, 1.4f);
             Destroy(roll.gameObject);
         }
 
         bool _titleDropped;
+        bool _firstUnderHandled;
+
+        /// The game names itself — called when she steps into the photo (the
+        /// prologue cinematic), not on the first press of 1.
+        public void DropTitle()
+        {
+            if (_titleDropped) return;
+            _titleDropped = true;
+            StartCoroutine(TitleDrop());
+        }
+
+        public void FullFlash() { StartCoroutine(FullFlashRoutine(0.2f)); }
+
+        /// A brief darkroom key-mapping note in the prologue ("1 — safelight" /
+        /// "2 — work light"), surfaced once each by the PrologueDirector.
+        public void ShowKeyHint(string text)
+        {
+            StartCoroutine(KeyHintRoutine(text));
+        }
+
+        IEnumerator KeyHintRoutine(string text)
+        {
+            var t = NewText("KeyHint", CanvasRoot, text, 22, new Color(0.82f, 0.81f, 0.77f, 0f), TextAnchor.MiddleCenter);
+            Place(t.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -118f), new Vector2(440f, 30f));
+            yield return FadeText(t, 0f, 1f, 0.3f);
+            yield return new WaitForSeconds(2.2f);
+            yield return FadeText(t, 1f, 0f, 0.6f);
+            Destroy(t.gameObject);
+        }
 
         /// The game names itself at the moment the player is standing inside it:
         /// THE DARKROOM fades up out of the first real darkness.
@@ -512,8 +571,8 @@ namespace Darkroom
             if (_objCo != null) { StopCoroutine(_objCo); _objCo = null; }
             _objGroup.alpha = 0f;
 
-            var title = NewText("Title", CanvasRoot, "THE DARKROOM", 72, new Color(0.95f, 0.93f, 0.88f, 0f), TextAnchor.MiddleCenter);
-            Place(title.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 90f), new Vector2(1400f, 110f));
+            var title = NewText("Title", CanvasRoot, "THE DARKROOM", 84, new Color(0.95f, 0.93f, 0.88f, 0f), TextAnchor.MiddleCenter, display: true, shadow: true);
+            Place(title.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 90f), new Vector2(1500f, 130f));
             if (AudioDirector.Instance != null) AudioDirector.Instance.NudgeHum(0.14f, 4.5f);
 
             float t = 0f;
@@ -554,21 +613,32 @@ namespace Darkroom
             int room = LevelData.RoomIndexAt(x);
             if (room != _shownRoom)
             {
+                int prev = _shownRoom;
                 _shownRoom = room;
+                if (AudioDirector.Instance != null) AudioDirector.Instance.SetRoomMood(room);
                 var def = LevelData.Rooms[room];
                 // rooms are frames on the roll — a story clock counting toward
                 // the one frame that was never exposed
-                _roomTitle.text = "FRAME " + (room + 1) + " OF " + LevelData.Rooms.Length + " : " + def.title;
+                // the prologue (room 0) is the blank, UNNUMBERED frame; the journey
+                // counts 1..10, and frame 11 (the self-portrait) is taken at the finale.
+                _roomTitle.text = room == 0
+                    ? def.title
+                    : "FRAME " + room + " OF 11 : " + def.title;
                 for (int i = 0; i < 2; i++)
                     _objLines[i].text = i < def.objectives.Length ? "○ " + def.objectives[i] : "";
                 if (_titleDevCo != null) StopCoroutine(_titleDevCo);
                 _titleDevCo = StartCoroutine(RoomTitleDevelop());
                 if (_objCo != null) StopCoroutine(_objCo);
                 _objCo = StartCoroutine(ObjectivesPeek()); // show, then get out of the way
+                // a brief ceremonial frame card on first forward entry (not at boot)
+                if (_firstRoomShown && room > prev && room >= 1) ShowFrameCard(room);
+                _firstRoomShown = true;
+                // she's stepped into the first frame: the full control HUD arrives
+                if (_prologueControls && room >= 1) { _prologueControls = false; RebuildControls(); }
             }
 
-            // controls block retires after the tutorial rooms
-            if (!_controlsGone && x > 42f)
+            // controls block retires after the drawing lesson (end of Room 5)
+            if (!_controlsGone && x > 73f)
             {
                 _controlsGone = true;
                 if (_controlsCo != null) StopCoroutine(_controlsCo);
@@ -603,22 +673,19 @@ namespace Darkroom
             HighlightState(e);
             Color target = e == Exposure.Underexposed ? OverlayUnder
                          : e == Exposure.Overexposed ? OverlayOver : OverlayNormal;
-            float vignette = e == Exposure.Underexposed ? 0.55f : 0f;
             if (_overlayCo != null) StopCoroutine(_overlayCo);
-            _overlayCo = StartCoroutine(LerpOverlay(target, vignette, 0.15f));
+            _overlayCo = StartCoroutine(LerpOverlay(target, 0.15f));
 
-            // the first darkness is the title moment: no white pop, the name instead
-            bool firstDark = !_titleDropped && e == Exposure.Underexposed;
+            // the first darkness is atmospheric — no white pop. The name (TitleDrop)
+            // is withheld until she steps INTO the photo (the prologue cinematic),
+            // not announced on the first press of 1.
+            bool firstUnder = !_firstUnderHandled && e == Exposure.Underexposed;
+            if (firstUnder) _firstUnderHandled = true;
             bool silent = ExposureManager.Instance != null && ExposureManager.Instance.LastChangeSilent;
-            if (firstDark)
-            {
-                _titleDropped = true;
-                StartCoroutine(TitleDrop());
-            }
-            else if (!silent)
+            if (!silent && !firstUnder)
             {
                 if (_flashCo != null) StopCoroutine(_flashCo);
-                _flashCo = StartCoroutine(OneFrameFlash());
+                _flashCo = StartCoroutine(SwitchFlash(e));
             }
 
             if (_knobCo != null) StopCoroutine(_knobCo);
@@ -651,9 +718,19 @@ namespace Darkroom
         {
             var gm = GameManager.Instance;
             if (gm == null || gm.Player == null || gm.HasWon) return;
+            if (gm.Player.transform.position.x < 5.5f) return; // the prologue stays note-only
             if (gm.Player.transform.position.x > 42f) return;
-            _cardTitle.text = "EXPOSURE : " + BadgeNames[(int)e];
-            _cardBody.text = CardBodies[(int)e];
+            if (_bubble.gameObject.activeSelf) return; // don't stack on a hint bubble
+            if (_exposureVocab)
+            {
+                _cardTitle.text = "EXPOSURE : " + BadgeNames[(int)e];
+                _cardBody.text = CardBodies[(int)e];
+            }
+            else
+            {
+                _cardTitle.text = ActionBadges[(int)e];
+                _cardBody.text = ActionBodies[(int)e];
+            }
             if (_cardCo != null) StopCoroutine(_cardCo);
             _cardCo = StartCoroutine(CardRoutine());
         }
@@ -681,28 +758,38 @@ namespace Darkroom
             g.alpha = target;
         }
 
-        IEnumerator LerpOverlay(Color target, float vignetteTarget, float dur)
+        IEnumerator LerpOverlay(Color target, float dur)
         {
             Color start = _overlay.color;
-            float vStart = _vignette.color.a;
             float t = 0f;
             while (t < dur)
             {
                 t += Time.deltaTime;
                 float k = Mathf.Clamp01(t / dur);
                 _overlay.color = Color.Lerp(start, target, k);
-                _vignette.color = new Color(1f, 1f, 1f, Mathf.Lerp(vStart, vignetteTarget, k));
                 yield return null;
             }
             _overlay.color = target;
-            _vignette.color = new Color(1f, 1f, 1f, vignetteTarget);
         }
 
-        IEnumerator OneFrameFlash()
+        // A restrained ~0.10s ease-out from a lowered peak, tinted toward the
+        // destination state — not the rejected full-screen wash. StopCoroutine on
+        // the prior flash (call site) means rapid mashing just holds a faint glow
+        // rather than strobing.
+        IEnumerator SwitchFlash(Exposure e)
         {
-            _whiteFlash.color = new Color(1f, 1f, 1f, 0.8f);
-            yield return null;
-            _whiteFlash.color = new Color(1f, 1f, 1f, 0f);
+            Color tint = e == Exposure.Underexposed ? FlashUnder
+                       : e == Exposure.Overexposed ? FlashOver : FlashNormal;
+            const float dur = 0.10f, peak = 0.55f;
+            float t = 0f;
+            while (t < dur)
+            {
+                t += Time.deltaTime;
+                float a = Mathf.Lerp(peak, 0f, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / dur)));
+                _whiteFlash.color = new Color(tint.r, tint.g, tint.b, a);
+                yield return null;
+            }
+            _whiteFlash.color = new Color(tint.r, tint.g, tint.b, 0f);
         }
 
         /// Jam: the exposure slider shakes (refused switch). The first PHYSICAL
@@ -798,10 +885,11 @@ namespace Darkroom
                     break;
                 case Ability.Flash:
                     ShowBanner("FLASH ACQUIRED — press 3: OVEREXPOSED.");
+                    SetExposureVocab(true); // the enlarger flash is now the OVER exposure
                     StartCoroutine(PunchScale(_stateLabels[2].rectTransform));
                     break;
                 case Ability.Shutter:
-                    ShowBanner("SHUTTER ACQUIRED — hold SHIFT in UNDER or OVER to draw light. Release to fix it.");
+                    ShowBanner("SHUTTER ACQUIRED — hold SHIFT to draw light, release to fix.");
                     _trailsGroup.SetActive(true);
                     StartCoroutine(PunchScale((RectTransform)_trailsGroup.transform));
                     break;
@@ -811,13 +899,29 @@ namespace Darkroom
             StartCoroutine(FullFlashRoutine(0.2f));
         }
 
-        /// DEV: refresh ability-dependent HUD after a silent grant (room warp).
+        /// DEV: refresh ability-dependent HUD after a silent grant (boot, restart,
+        /// room warp). Also re-seeds the slider vocab from the owned abilities so it
+        /// never leaks across runs (safelight-vocab until the Flash is held).
         public void RefreshAbilityHud()
         {
             ApplyLocks();
             RebuildControls();
             var gm = GameManager.Instance;
             if (_trailsGroup != null) _trailsGroup.SetActive(gm != null && gm.HasShutter);
+            SetExposureVocab(gm != null && gm.HasFlash);
+        }
+
+        /// Swap the slider labels between darkroom-action terms (safelight / work
+        /// light / enlarger flash) and exposure terms. On once the Flash is owned.
+        public void SetExposureVocab(bool on)
+        {
+            _exposureVocab = on;
+            var names = on ? ExposureLabels : ActionLabels;
+            for (int i = 0; i < 3; i++)
+                if (_stateLabels[i] != null) _stateLabels[i].text = names[i];
+            var em = ExposureManager.Instance;
+            HighlightState(em != null ? em.Current : Exposure.Normal);
+            ApplyLocks();
         }
 
         void ApplyLocks()
@@ -834,8 +938,18 @@ namespace Darkroom
         void RebuildControls()
         {
             var gm = GameManager.Instance;
+            // the prologue HUD shows ONLY move/jump, on two lines and nothing else —
+            // no pause/retry, no exposure — until she steps into the first frame.
+            if (_prologueControls)
+            {
+                _controlsText.text = "A / D — move\nSPACE — jump";
+                return;
+            }
             string s = "A/D ←→ move · SPACE jump";
-            if (gm != null && (gm.HasNegative || gm.HasFlash))
+            // the exposure controls surface with the enlarger flash (R2).
+            // Safelight/work-light are taught by the slider label + the
+            // "1 — safelight" key hint instead.
+            if (gm != null && gm.HasFlash)
                 s += "\n1/2/3 · Q/E exposure";
             if (gm != null && gm.HasShutter)
                 s += "\nhold SHIFT draw · release fix";
@@ -877,18 +991,51 @@ namespace Darkroom
         {
             _hintKey = key;
             if (_hintHideCo != null) { StopCoroutine(_hintHideCo); _hintHideCo = null; }
+            if (_hintDeferCo != null) { StopCoroutine(_hintDeferCo); _hintDeferCo = null; }
+            // one teaching prompt at a time: if a pickup banner is up, wait it out
+            if (_bannerBox != null && _bannerBox.activeSelf)
+                _hintDeferCo = StartCoroutine(ShowHintAfterBanner(text, key));
+            else
+                ShowHintNow(text, key);
+        }
+
+        IEnumerator ShowHintAfterBanner(string text, object key)
+        {
+            while (_bannerBox != null && _bannerBox.activeSelf) yield return null;
+            _hintDeferCo = null;
+            if (_hintKey == key) ShowHintNow(text, key); // still the active trigger
+        }
+
+        void ShowHintNow(string text, object key)
+        {
             _bubble.sizeDelta = new Vector2(460f, text.Length > 70 ? 112f : 84f);
             _bubbleText.text = text;
             var comp = key as Component;
             _bubbleAnchor = comp != null ? comp.transform : null;
-            _bubble.gameObject.SetActive(_bubbleAnchor != null);
+            if (_bubbleAnchor != null)
+            {
+                _bubble.gameObject.SetActive(true);
+                if (_bubbleFadeCo != null) StopCoroutine(_bubbleFadeCo);
+                _bubbleFadeCo = StartCoroutine(FadeGroup(_bubbleGroup, 1f, 0.25f));
+                // a tiny pop the first time each prompt surfaces (re-entry stays silent)
+                if (key != null && _hintsHeard.Add(key) && AudioDirector.Instance != null)
+                    AudioDirector.Instance.PlayHintPop();
+            }
+            else _bubble.gameObject.SetActive(false);
         }
 
         public void OnHintExit(object key)
         {
             if (_hintKey != key) return;
+            // if the hint was still queued behind a banner, just drop it
+            if (_hintDeferCo != null)
+            {
+                StopCoroutine(_hintDeferCo); _hintDeferCo = null;
+                _hintKey = null; _bubbleAnchor = null;
+                return;
+            }
             if (_hintHideCo != null) StopCoroutine(_hintHideCo);
-            _hintHideCo = StartCoroutine(HideHintAfter(6f, key));
+            _hintHideCo = StartCoroutine(HideHintAfter(2.5f, key));
         }
 
         IEnumerator HideHintAfter(float delay, object key)
@@ -896,6 +1043,8 @@ namespace Darkroom
             yield return new WaitForSeconds(delay);
             if (_hintKey == key)
             {
+                if (_bubbleFadeCo != null) StopCoroutine(_bubbleFadeCo);
+                yield return FadeGroup(_bubbleGroup, 0f, 0.4f);
                 _bubble.gameObject.SetActive(false);
                 _hintKey = null;
                 _bubbleAnchor = null;
@@ -926,6 +1075,7 @@ namespace Darkroom
         IEnumerator CheckpointRoutine(string caption)
         {
             bool noted = !string.IsNullOrEmpty(caption);
+            StartCoroutine(SoftFlash(0.22f, 0.45f)); // the print develops
             _checkpointText.text = "CHECKPOINT DEVELOPED";
             _checkpointCaption.text = noted ? caption : "";
             // a margin note earns a longer look
@@ -967,6 +1117,101 @@ namespace Darkroom
             _whiteFlash.color = new Color(1f, 1f, 1f, 0f);
         }
 
+        /// A gentle white bloom (softer than the one-frame switch flash) — the
+        /// print "developing" at a checkpoint.
+        IEnumerator SoftFlash(float maxA, float dur)
+        {
+            float t = 0f;
+            while (t < dur)
+            {
+                t += Time.deltaTime;
+                _whiteFlash.color = new Color(1f, 1f, 1f, Mathf.Lerp(maxA, 0f, Mathf.Clamp01(t / dur)));
+                yield return null;
+            }
+            _whiteFlash.color = new Color(1f, 1f, 1f, 0f);
+        }
+
+        // ---------- cinematic flow: letterbox, boot, frame cards ----------
+
+        /// Slide the cinematic bars in/out. Used for the boot open and the finale.
+        public const float LetterboxHeight = 92f;
+
+        public void SetLetterbox(bool on, float dur = 0.7f)
+        {
+            if (_letterboxCo != null) StopCoroutine(_letterboxCo);
+            _letterboxCo = StartCoroutine(LetterboxRoutine(on ? LetterboxHeight : 0f, dur));
+        }
+
+        IEnumerator LetterboxRoutine(float target, float dur)
+        {
+            float start = _barTop.sizeDelta.y, t = 0f;
+            while (t < dur)
+            {
+                t += Time.deltaTime;
+                float h = Mathf.Lerp(start, target, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / dur)));
+                _barTop.sizeDelta = new Vector2(0f, h);
+                _barBottom.sizeDelta = new Vector2(0f, h);
+                yield return null;
+            }
+            _barTop.sizeDelta = new Vector2(0f, target);
+            _barBottom.sizeDelta = new Vector2(0f, target);
+        }
+
+        /// Boot open: the darkroom in the dark — a drip, the fan, a distant
+        /// shutter — then the room develops up out of black under a brief letterbox.
+        IEnumerator BootIn()
+        {
+            _blackFade.color = new Color(0f, 0f, 0f, 1f);
+            _barTop.sizeDelta = new Vector2(0f, 56f);
+            _barBottom.sizeDelta = new Vector2(0f, 56f);
+            var ad = AudioDirector.Instance;
+            if (ad != null) { ad.SetFan(0.16f); ad.NudgeHum(0.06f, 4f); } // the ventilation fan, a quiet darkroom
+            yield return new WaitForSeconds(0.4f);
+            if (ad != null) ad.PlayDrip();  // a drop in the dark
+            yield return new WaitForSeconds(1.2f);
+            if (ad != null) ad.PlayClick(); // a distant shutter
+            yield return new WaitForSeconds(0.5f);
+            if (ad != null) ad.PlayDrip();  // another drop
+            yield return new WaitForSeconds(0.5f);
+            if (ad != null) ad.SetFan(0.05f); // the fan recedes as the room develops up
+            yield return FadeBlackRoutine(false, 1.6f);
+            yield return new WaitForSeconds(1.6f);
+            SetLetterbox(false, 1.3f);
+        }
+
+        /// A brief ceremonial "FRAME N" as the player crosses into a new frame.
+        void ShowFrameCard(int frame)
+        {
+            if (_frameCardCo != null) StopCoroutine(_frameCardCo);
+            _frameCardCo = StartCoroutine(FrameCardRoutine(frame));
+        }
+
+        IEnumerator FrameCardRoutine(int frame)
+        {
+            string title = frame >= 0 && frame < LevelData.Rooms.Length ? LevelData.Rooms[frame].title : "";
+            _frameCard.text = "FRAME " + frame + " OF 11 — " + title;
+            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayFrameCardChime();
+            Color c = _frameCard.color;
+            yield return FadeText(_frameCard, 0f, 1f, 0.6f);
+            yield return new WaitForSeconds(1.7f);
+            yield return FadeText(_frameCard, 1f, 0f, 0.9f);
+            c.a = 0f; _frameCard.color = c;
+        }
+
+        static IEnumerator FadeText(Text txt, float from, float to, float dur)
+        {
+            float t = 0f;
+            Color c = txt.color;
+            while (t < dur)
+            {
+                t += Time.deltaTime;
+                c.a = Mathf.Lerp(from, to, Mathf.Clamp01(t / dur));
+                txt.color = c;
+                yield return null;
+            }
+            c.a = to; txt.color = c;
+        }
+
         // ---------- pause / mute ----------
 
         public void ShowPause(bool paused) { _pausePanel.SetActive(paused); }
@@ -979,65 +1224,18 @@ namespace Darkroom
             return m + ":" + (t - m * 60f).ToString("00.0");
         }
 
-        // ---------- textures ----------
-
-        Texture2D MakeGrainTexture(int seed)
-        {
-            var tex = new Texture2D(128, 128, TextureFormat.RGBA32, false);
-            tex.wrapMode = TextureWrapMode.Repeat;
-            tex.filterMode = FilterMode.Bilinear; // soft, not gritty
-            var rng = new System.Random(7000 + seed);
-            var px = new Color32[128 * 128];
-            for (int i = 0; i < px.Length; i++)
-            {
-                float a = Mathf.Pow((float)rng.NextDouble(), 10f); // sparse
-                px[i] = new Color32(255, 255, 255, (byte)(a * 255f));
-            }
-            tex.SetPixels32(px);
-            tex.Apply();
-            return tex;
-        }
-
-        IEnumerator GrainFlicker()
-        {
-            var wait = new WaitForSeconds(0.12f);
-            int i = 0;
-            while (true)
-            {
-                i = (i + 1) % _grainTex.Length;
-                _grain.texture = _grainTex[i];
-                _grain.uvRect = new Rect(Random.value, Random.value, 8f, 4.5f);
-                yield return wait;
-            }
-        }
-
-        Texture2D MakeVignetteTexture()
-        {
-            int n = 256;
-            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
-            tex.filterMode = FilterMode.Bilinear;
-            tex.wrapMode = TextureWrapMode.Clamp;
-            var px = new Color32[n * n];
-            for (int y = 0; y < n; y++)
-                for (int x = 0; x < n; x++)
-                {
-                    float dx = (x - 127.5f) / 127.5f;
-                    float dy = (y - 127.5f) / 127.5f;
-                    float r = Mathf.Sqrt(dx * dx + dy * dy);
-                    float a = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((r - 0.5f) / 0.55f));
-                    px[y * n + x] = new Color32(0, 0, 0, (byte)(a * 255f));
-                }
-            tex.SetPixels32(px);
-            tex.Apply();
-            return tex;
-        }
-
         // ---------- restart ----------
 
         public void ResetForRestart()
         {
             var win = CanvasRoot.Find("WinScreen");
             if (win != null) Destroy(win.gameObject);
+            // a replay re-enters the prologue: darkroom vocab + the name un-dropped
+            _exposureVocab = false;
+            _titleDropped = false;
+            _firstUnderHandled = false;
+            for (int i = 0; i < 3; i++)
+                if (_stateLabels[i] != null) _stateLabels[i].text = ActionLabels[i];
             ApplyLocks();
             HighlightState(Exposure.Normal);
             ApplyLocks(); // re-dim locked labels after highlight reset
@@ -1045,7 +1243,6 @@ namespace Darkroom
             _trailsGroup.SetActive(false);
             SetStrokeDots(3);
             _overlay.color = OverlayNormal;
-            _vignette.color = new Color(1f, 1f, 1f, 0f);
             _bannerBox.SetActive(false);
             _checkpointText.text = "";
             _checkpointCaption.text = "";
@@ -1055,11 +1252,19 @@ namespace Darkroom
             _jamText.text = "";
             _blackFade.color = new Color(0f, 0f, 0f, 0f);
             _whiteFlash.color = new Color(1f, 1f, 1f, 0f);
+            if (_hintHideCo != null) { StopCoroutine(_hintHideCo); _hintHideCo = null; }
+            if (_hintDeferCo != null) { StopCoroutine(_hintDeferCo); _hintDeferCo = null; }
             _bubble.gameObject.SetActive(false);
+            _bubbleGroup.alpha = 1f;
             _hintKey = null;
             _bubbleAnchor = null;
             _shownRoom = -1;
+            _firstRoomShown = false;
+            if (_frameCardCo != null) { StopCoroutine(_frameCardCo); _frameCardCo = null; }
+            { var fc = _frameCard.color; fc.a = 0f; _frameCard.color = fc; }
+            SetLetterbox(false, 0.01f);
             _controlsGone = false;
+            _prologueControls = true; // a replay re-enters the prologue: HUD back to move/jump
             _controlsGroup.alpha = 0.65f;
             RebuildControls();
             if (_cardCo != null) { StopCoroutine(_cardCo); _cardCo = null; }

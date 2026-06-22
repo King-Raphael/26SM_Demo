@@ -15,6 +15,8 @@ namespace Darkroom
         public float bottomY;
         public float riseSpeed = 1.6f;
         public Vector2 boxSize;
+        /// Fades added child detail (beam supports/top edge) with the slab.
+        public System.Action<float> onAlpha;
 
         const float SolidAlpha = 1f, GoneAlpha = 0f;
         const float FadeSpeed = 10f;
@@ -25,6 +27,7 @@ namespace Darkroom
         Color _baseColor;
         float _alpha;
         bool _solid;
+        bool _moving;   // drives the lift-motion audio bed (edge-triggered)
 
         void Awake()
         {
@@ -55,6 +58,7 @@ namespace Darkroom
             _alpha = GoneAlpha;
             if (_col != null) _col.enabled = false;
             ApplyAlpha(_alpha);
+            if (_moving) { _moving = false; if (AudioDirector.Instance != null) AudioDirector.Instance.LiftOff(); }
         }
 
         void FixedUpdate()
@@ -72,6 +76,7 @@ namespace Darkroom
             }
 
             // rise only while ridden, so it waits at the bottom to catch first
+            bool moving = false;
             if (solid && _rb.position.y < topY)
             {
                 var gm = GameManager.Instance;
@@ -85,8 +90,16 @@ namespace Darkroom
                     {
                         _rb.MovePosition(new Vector2(_rb.position.x, newY));
                         gm.Player.Body.position += new Vector2(0f, dy);
+                        moving = true;
                     }
                 }
+            }
+            // a slab of light, rising: a bright high motor while it actually moves
+            if (moving != _moving)
+            {
+                _moving = moving;
+                var ad = AudioDirector.Instance;
+                if (ad != null) { if (moving) ad.LiftOn(1.25f); else ad.LiftOff(); }
             }
 
             float target = solid ? SolidAlpha : GoneAlpha;
@@ -99,10 +112,8 @@ namespace Darkroom
 
         void ApplyAlpha(float a)
         {
-            if (_sr == null) return;
-            var c = _baseColor;
-            c.a = a;
-            _sr.color = c;
+            if (_sr != null) { var c = _baseColor; c.a = a; _sr.color = c; }
+            onAlpha?.Invoke(a);
         }
     }
 }

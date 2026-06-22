@@ -16,9 +16,14 @@ namespace Darkroom
         public float bottomY;
         public float sinkSpeed = 1.6f;
         public Vector2 boxSize;
+        /// Fades added child detail (catch-light/underside glow) with the slab.
+        public System.Action<float> onAlpha;
 
         const float SolidAlpha = 1f, GoneAlpha = 0f;
         const float FadeSpeed = 10f;
+        // the slab only appears once the player is within this x-range, so the
+        // descent can't be spotted from the previous room's bridge while in UNDER
+        const float RevealDistX = 4f;
 
         Rigidbody2D _rb;
         Collider2D _col;
@@ -26,6 +31,7 @@ namespace Darkroom
         Color _baseColor;
         float _alpha;
         bool _solid;
+        bool _moving;   // drives the lift-motion audio bed (edge-triggered)
 
         void Awake()
         {
@@ -56,6 +62,7 @@ namespace Darkroom
             _alpha = GoneAlpha;
             if (_col != null) _col.enabled = false;
             ApplyAlpha(_alpha);
+            if (_moving) { _moving = false; if (AudioDirector.Instance != null) AudioDirector.Instance.LiftOff(); }
         }
 
         void FixedUpdate()
@@ -63,9 +70,14 @@ namespace Darkroom
             if (_rb == null) return;
             var em = ExposureManager.Instance;
             var e = em != null ? em.Current : Exposure.Normal;
+            var gm = GameManager.Instance;
 
-            // a dark shadow: solid + visible only in UNDER
-            bool solid = e == Exposure.Underexposed;
+            // a dark shadow: solid + visible only in UNDER — and only once the
+            // player is near, so it can't be spotted from the previous room's
+            // bridge while crossing it in UNDER (keeps the descent a discovery)
+            bool near = gm == null || gm.Player == null
+                        || Mathf.Abs(gm.Player.transform.position.x - _rb.position.x) < RevealDistX;
+            bool solid = e == Exposure.Underexposed && near;
             if (solid != _solid)
             {
                 _solid = solid;
@@ -74,9 +86,9 @@ namespace Darkroom
 
             // sink only while BEING RIDDEN, so it waits at the top to catch the
             // player and then carries them down (not before)
+            bool moving = false;
             if (solid && _rb.position.y > bottomY)
             {
-                var gm = GameManager.Instance;
                 bool ridden = gm != null && gm.Player != null && _col != null
                               && gm.Player.IsStandingOn(_col);
                 if (ridden)
@@ -87,8 +99,16 @@ namespace Darkroom
                     {
                         _rb.MovePosition(new Vector2(_rb.position.x, newY));
                         gm.Player.Body.position += new Vector2(0f, dy);
+                        moving = true;
                     }
                 }
+            }
+            // a slab of shadow, sinking: a dark low motor while it actually moves
+            if (moving != _moving)
+            {
+                _moving = moving;
+                var ad = AudioDirector.Instance;
+                if (ad != null) { if (moving) ad.LiftOn(0.7f); else ad.LiftOff(); }
             }
 
             float target = solid ? SolidAlpha : GoneAlpha;
@@ -101,10 +121,8 @@ namespace Darkroom
 
         void ApplyAlpha(float a)
         {
-            if (_sr == null) return;
-            var c = _baseColor;
-            c.a = a;
-            _sr.color = c;
+            if (_sr != null) { var c = _baseColor; c.a = a; _sr.color = c; }
+            onAlpha?.Invoke(a);
         }
     }
 }

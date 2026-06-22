@@ -9,60 +9,105 @@ namespace Darkroom
     {
         // ---------- tiny canvas ----------
 
+        /// Shapes are rasterised into a supersampled (SSx) buffer in logical
+        /// coordinates, then box-downsampled — so hard binary-alpha fills come out
+        /// with anti-aliased edges (no staircase) instead of blocky silhouettes.
         class Buf
         {
-            public readonly int W, H;
-            public readonly Color32[] Px;
+            const int SS = 4;
+            public readonly int W, H, PW, PH;
+            public readonly Color32[] Px; // physical (supersampled) RGBA
 
-            public Buf(int w, int h) { W = w; H = h; Px = new Color32[w * h]; }
+            public Buf(int w, int h) { W = w; H = h; PW = w * SS; PH = h * SS; Px = new Color32[PW * PH]; }
 
             public void FillRect(float x0, float y0, float x1, float y1, Color32 c)
             {
-                for (int y = Mathf.Max(0, (int)y0); y < Mathf.Min(H, (int)y1); y++)
-                    for (int x = Mathf.Max(0, (int)x0); x < Mathf.Min(W, (int)x1); x++)
-                        Px[y * W + x] = c;
+                x0 *= SS; y0 *= SS; x1 *= SS; y1 *= SS;
+                for (int y = Mathf.Max(0, (int)y0); y < Mathf.Min(PH, (int)y1); y++)
+                    for (int x = Mathf.Max(0, (int)x0); x < Mathf.Min(PW, (int)x1); x++)
+                        Px[y * PW + x] = c;
             }
 
             public void FillEllipse(float cx, float cy, float rx, float ry, Color32 c)
             {
-                for (int y = Mathf.Max(0, (int)(cy - ry)); y <= Mathf.Min(H - 1, (int)(cy + ry)); y++)
+                cx *= SS; cy *= SS; rx *= SS; ry *= SS;
+                for (int y = Mathf.Max(0, (int)(cy - ry)); y <= Mathf.Min(PH - 1, (int)(cy + ry)); y++)
                 {
                     float dy = (y - cy) / ry;
                     float span = rx * Mathf.Sqrt(Mathf.Max(0f, 1f - dy * dy));
-                    for (int x = Mathf.Max(0, (int)(cx - span)); x <= Mathf.Min(W - 1, (int)(cx + span)); x++)
-                        Px[y * W + x] = c;
+                    for (int x = Mathf.Max(0, (int)(cx - span)); x <= Mathf.Min(PW - 1, (int)(cx + span)); x++)
+                        Px[y * PW + x] = c;
                 }
             }
 
             /// Vertical trapezoid: half-width lerps from hw0 (at y0) to hw1 (at y1).
             public void FillTaper(float cx, float y0, float y1, float hw0, float hw1, Color32 c)
             {
-                for (int y = Mathf.Max(0, (int)y0); y < Mathf.Min(H, (int)y1); y++)
+                cx *= SS; y0 *= SS; y1 *= SS; hw0 *= SS; hw1 *= SS;
+                for (int y = Mathf.Max(0, (int)y0); y < Mathf.Min(PH, (int)y1); y++)
                 {
                     float k = (y - y0) / Mathf.Max(1f, y1 - y0);
                     float hw = Mathf.Lerp(hw0, hw1, k);
-                    for (int x = Mathf.Max(0, (int)(cx - hw)); x <= Mathf.Min(W - 1, (int)(cx + hw)); x++)
-                        Px[y * W + x] = c;
+                    for (int x = Mathf.Max(0, (int)(cx - hw)); x <= Mathf.Min(PW - 1, (int)(cx + hw)); x++)
+                        Px[y * PW + x] = c;
                 }
             }
 
-            /// Faint rim light along the left silhouette edge.
-            public void RimLeft(Color32 rim)
+            /// Soft radial fill for gradients (the enemy aura, the blob body):
+            /// pixels with r&gt;=1 (or below yMin) are left untouched.
+            public void Radial(float cx, float cy, float rx, float ry, float yMin, Color32 rgb, System.Func<float, float> alphaByR)
             {
-                for (int y = 0; y < H; y++)
-                    for (int x = 0; x < W; x++)
-                        if (Px[y * W + x].a > 0)
-                        {
-                            Px[y * W + x] = rim;
-                            break;
-                        }
+                cx *= SS; cy *= SS; rx *= SS; ry *= SS; yMin *= SS;
+                for (int y = Mathf.Max(0, (int)yMin); y < PH; y++)
+                    for (int x = 0; x < PW; x++)
+                    {
+                        float dx = (x - cx) / rx, dy = (y - cy) / ry;
+                        float r = Mathf.Sqrt(dx * dx + dy * dy);
+                        if (r >= 1f) continue;
+                        float a = Mathf.Clamp01(alphaByR(r));
+                        if (a <= 0f) continue;
+                        Px[y * PW + x] = new Color32(rgb.r, rgb.g, rgb.b, (byte)(a * 255f));
+                    }
+            }
+
+            /// Soft rim along the left silhouette edge — the first `width` logical
+            /// pixels of each row become a soft sub-pixel rim once downsampled.
+            public void RimLeft(Color32 rim, int width = 1)
+            {
+                int w = Mathf.Max(1, width * SS);
+                for (int y = 0; y < PH; y++)
+                {
+                    int found = -1;
+                    for (int x = 0; x < PW; x++)
+                        if (Px[y * PW + x].a > 0) { found = x; break; }
+                    if (found < 0) continue;
+                    for (int x = found; x < Mathf.Min(PW, found + w); x++)
+                        Px[y * PW + x] = rim;
+                }
             }
 
             public Sprite ToSprite(string name, float ppu)
             {
+                // alpha-weighted box downsample SS×SS -> 1 (no dark edge fringes)
+                var outPx = new Color32[W * H];
+                for (int y = 0; y < H; y++)
+                    for (int x = 0; x < W; x++)
+                    {
+                        float r = 0f, g = 0f, b = 0f, a = 0f;
+                        for (int sy = 0; sy < SS; sy++)
+                            for (int sx = 0; sx < SS; sx++)
+                            {
+                                var p = Px[(y * SS + sy) * PW + (x * SS + sx)];
+                                float pa = p.a / 255f;
+                                r += p.r * pa; g += p.g * pa; b += p.b * pa; a += pa;
+                            }
+                        if (a < 0.0001f) { outPx[y * W + x] = new Color32(0, 0, 0, 0); continue; }
+                        byte oa = (byte)(a / (SS * SS) * 255f);
+                        outPx[y * W + x] = new Color32((byte)(r / a), (byte)(g / a), (byte)(b / a), oa);
+                    }
                 var tex = new Texture2D(W, H, TextureFormat.RGBA32, false);
                 tex.filterMode = FilterMode.Bilinear;
-                tex.SetPixels32(Px);
+                tex.SetPixels32(outPx);
                 tex.Apply();
                 var s = Sprite.Create(tex, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f), ppu, 0, SpriteMeshType.FullRect);
                 s.name = name;
@@ -79,7 +124,7 @@ namespace Darkroom
 
         // ---------- the girl (42x78 @ 60ppu = 0.7 x 1.3) ----------
 
-        static Sprite _pIdle, _pWalkA, _pWalkB, _pJump, _pShoot;
+        static Sprite _pIdle, _pWalkA, _pWalkB, _pJump, _pShoot, _pBlank;
 
         public static Sprite PlayerIdle { get { EnsurePlayer(); return _pIdle; } }
         public static Sprite PlayerWalkA { get { EnsurePlayer(); return _pWalkA; } }
@@ -87,6 +132,9 @@ namespace Darkroom
         public static Sprite PlayerJump { get { EnsurePlayer(); return _pJump; } }
         /// Finale pose: the camera raised to her eye.
         public static Sprite PlayerShoot { get { EnsurePlayer(); return _pShoot; } }
+        /// The unprinted self: the idle silhouette with no eye — a blank face,
+        /// the latent image that develops on the paper in the prologue cinematic.
+        public static Sprite PlayerBlank { get { EnsurePlayer(); return _pBlank; } }
 
         static void EnsurePlayer()
         {
@@ -96,6 +144,7 @@ namespace Darkroom
             _pWalkB = Girl("GirlWalkB", 19f, 22f, 0f, 13f);
             _pJump = Girl("GirlJump", 16f, 25f, 10f, 16f);
             _pShoot = GirlShoot();
+            _pBlank = Girl("GirlBlank", 17f, 24f, 0f, 13f, false); // idle pose, faceless
         }
 
         /// Idle stance, one arm raised, the camera at her eye. The lens
@@ -125,7 +174,7 @@ namespace Darkroom
             // the camera, held to her eye
             b.FillRect(24f, 57f, 37f, 66f, Body);
 
-            b.RimLeft(Rim);
+            b.RimLeft(Rim, 3);
 
             // viewfinder/lens glint where the glowing eye used to be
             b.FillRect(29f, 60f, 32f, 63f, Eye);
@@ -134,7 +183,8 @@ namespace Darkroom
         }
 
         /// legL/legR = leg center x; legLift = raised feet (jump tuck); hemHW = dress hem half-width.
-        static Sprite Girl(string name, float legL, float legR, float legLift, float hemHW)
+        /// eye = draw the glowing eye (false leaves the face blank — the unprinted self).
+        static Sprite Girl(string name, float legL, float legR, float legLift, float hemHW, bool eye = true)
         {
             var b = new Buf(42, 78);
 
@@ -157,10 +207,10 @@ namespace Darkroom
             b.FillEllipse(21f, 64f, 8.5f, 9f, Body);
             b.FillEllipse(13f, 69f, 4.5f, 4.5f, Body);
 
-            b.RimLeft(Rim);
+            b.RimLeft(Rim, 3);
 
-            // glowing eye
-            b.FillRect(24f, 62f, 27f, 65f, Eye);
+            // glowing eye (omitted for the blank, faceless self)
+            if (eye) b.FillRect(24f, 62f, 27f, 65f, Eye);
 
             return b.ToSprite(name, 60f);
         }
@@ -187,30 +237,12 @@ namespace Darkroom
 
             // awake: dim red aura behind the creature
             if (eyesOpen)
-                for (int y = 0; y < 48; y++)
-                    for (int x = 0; x < 48; x++)
-                    {
-                        float dx = (x - 23.5f) / 24f;
-                        float dy = (y - 21f) / 23f;
-                        float r = Mathf.Sqrt(dx * dx + dy * dy);
-                        if (r < 1f)
-                            b.Px[y * 48 + x] = new Color32(0x70, 0x12, 0x12,
-                                (byte)(Mathf.Pow(1f - r, 2f) * 110f));
-                    }
+                b.Radial(23.5f, 21f, 24f, 23f, 0f, new Color32(0x70, 0x12, 0x12, 255),
+                    r => Mathf.Pow(1f - r, 2f) * (110f / 255f));
 
-            // crouched shade: squashed disc with a flat bottom
-            for (int y = 4; y < 48; y++)
-                for (int x = 0; x < 48; x++)
-                {
-                    float dx = (x - 23.5f) / 21f;
-                    float dy = (y - 19f) / 17f;
-                    float r = Mathf.Sqrt(dx * dx + dy * dy);
-                    if (r < 1f)
-                    {
-                        byte a = (byte)(Mathf.Clamp01((1f - r) * 8f) * 255f);
-                        b.Px[y * 48 + x] = new Color32(body.r, body.g, body.b, a);
-                    }
-                }
+            // crouched shade: squashed disc with a soft edge (flat-ish bottom)
+            b.Radial(23.5f, 19f, 21f, 17f, 4f, body, r => Mathf.Clamp01((1f - r) * 8f));
+
             // little horn nubs
             b.FillTaper(14f, 33f, 43f, 3.5f, 0.8f, body);
             b.FillTaper(33f, 33f, 43f, 3.5f, 0.8f, body);

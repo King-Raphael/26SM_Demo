@@ -11,6 +11,8 @@ namespace Darkroom
     {
         public float range = 3.2f;
         public Vector2 boxSize;
+        /// Optional latent grain veil that resolves away as the print develops.
+        public SpriteRenderer grainVeil;
 
         const float GhostAlpha = 0.16f, SolidAlpha = 1f;
 
@@ -50,8 +52,26 @@ namespace Darkroom
         void Fix()
         {
             _fixed = true;
-            if (_col != null) _col.enabled = true;
+            if (_col != null) _col.enabled = true; // steppable the instant you print
+            StartCoroutine(DevelopIn());           // ...the look develops in (cosmetic)
+        }
+
+        System.Collections.IEnumerator DevelopIn()
+        {
+            StrokeSparkle.Burst(transform.position, new Color(0.72f, 0.86f, 1f, 1f), 10);
+            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayFixPlatform();
+            Color veilBase = grainVeil != null ? grainVeil.color : Color.clear;
+            float t = 0f; const float dur = 0.5f;
+            while (t < dur)
+            {
+                t += Time.deltaTime;
+                float k = Mathf.Clamp01(t / dur);
+                if (_sr != null) { var c = _baseColor; c.a = Mathf.Lerp(GhostAlpha, SolidAlpha, k); _sr.color = c; }
+                if (grainVeil != null) { var g = veilBase; g.a = Mathf.Lerp(veilBase.a, 0f, k); grainVeil.color = g; }
+                yield return null;
+            }
             if (_sr != null) { var c = _baseColor; c.a = SolidAlpha; _sr.color = c; }
+            if (grainVeil != null) { var g = veilBase; g.a = 0f; grainVeil.color = g; }
         }
     }
 }

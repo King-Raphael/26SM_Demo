@@ -16,6 +16,7 @@ namespace Darkroom
 
         void Update()
         {
+            if (PauseController.IsPaused) return;
             float k = (Mathf.Sin(Time.time * Speed) + 1f) * 0.5f;
             if (Target != null)
             {

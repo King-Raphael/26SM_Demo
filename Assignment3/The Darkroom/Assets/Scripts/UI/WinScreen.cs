@@ -133,6 +133,15 @@ namespace Darkroom
             HUDController.Place(paper.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 150f), new Vector2(340f, 460f));
             HUDController.AddBorder(paper.rectTransform, new Color(0.10f, 0.10f, 0.11f, 0.85f));
 
+            // BOOKEND: the once-blank eleventh frame was never empty — she was always
+            // LATENT in it. A faint ghost sits on the warm paper from the moment it is
+            // revealed; the full self-portrait then develops in over it. (The prologue's
+            // blank-paper door, answered — and it lands even for players who skipped it.)
+            var latent = HUDController.NewImage("SelfPortraitLatent", paper.transform, new Color(1f, 1f, 1f, 0.12f));
+            latent.sprite = SilhouetteArt.PlayerIdle;
+            latent.preserveAspect = true;
+            HUDController.Place(latent.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 30f), new Vector2(180f, 330f));
+
             _figure = HUDController.NewImage("SelfPortrait", paper.transform, new Color(1f, 1f, 1f, 0f));
             _figure.sprite = SilhouetteArt.PlayerIdle;
             _figure.preserveAspect = true;
@@ -142,7 +151,7 @@ namespace Darkroom
             _folioGroup = folioRT.gameObject.AddComponent<CanvasGroup>();
             _folioGroup.alpha = 0f;
             var folio = HUDController.NewText("PaperCaption", folioRT, "self-portrait.",
-                18, new Color(0.32f, 0.30f, 0.28f, 1f), TextAnchor.MiddleCenter);
+                19, new Color(0.32f, 0.30f, 0.28f, 1f), TextAnchor.MiddleCenter, display: true);
             HUDController.Place(folioRT, new Vector2(0.5f, 0f), new Vector2(0f, 34f), new Vector2(300f, 26f));
             HUDController.Stretch(folio.rectTransform);
 
@@ -151,7 +160,7 @@ namespace Darkroom
             for (int i = 0; i < MarginCopy.Length; i++)
             {
                 _marginLines[i] = HUDController.NewText("Margin" + i, transform, MarginCopy[i],
-                    20, new Color(0.78f, 0.76f, 0.72f, 0f), TextAnchor.MiddleCenter);
+                    21, new Color(0.78f, 0.76f, 0.72f, 0f), TextAnchor.MiddleCenter, display: true);
                 HUDController.Place(_marginLines[i].rectTransform, new Vector2(0.5f, 0.5f),
                     new Vector2(0f, -104f - i * 36f), new Vector2(900f, 30f));
             }
@@ -164,7 +173,7 @@ namespace Darkroom
 
             var text = HUDController.NewText("WinText", blockRT,
                 "DEVELOPED.\nThe final image holds.\nPress R to restart.",
-                32, new Color(0.96f, 0.94f, 0.90f, 1f), TextAnchor.MiddleCenter);
+                34, new Color(0.96f, 0.94f, 0.90f, 1f), TextAnchor.MiddleCenter, display: true, shadow: true);
             text.lineSpacing = 1.4f;
             HUDController.Place(text.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -256f), new Vector2(1200f, 160f));
 
@@ -214,7 +223,10 @@ namespace Darkroom
                 g.alpha = 0f;
                 _thumbGroups[i] = g;
 
-                var shot = album.Shot(i);
+                // strip position i (0..10) reads as frame i+1. Frames 1..10 are the
+                // journey (album slots 1..10); frame 11 is the self-portrait, which
+                // the finale printed into slot 0 (the once-blank unprinted frame).
+                var shot = album.Shot(i < 10 ? i + 1 : 0);
                 // white print border (dim if the frame was never caught)
                 var border = HUDController.NewImage("Border", slotRT,
                     shot != null ? new Color(0.90f, 0.88f, 0.83f, 1f) : new Color(0.30f, 0.29f, 0.27f, 1f));

@@ -23,9 +23,35 @@ namespace Darkroom
         }
 
         public static bool JumpPressed => K != null && K.spaceKey.wasPressedThisFrame;
+        public static bool JumpHeld => K != null && K.spaceKey.isPressed;   // variable jump (level, safe in FixedUpdate)
         public static bool Set1Pressed => K != null && K.digit1Key.wasPressedThisFrame;
         public static bool Set2Pressed => K != null && K.digit2Key.wasPressedThisFrame;
         public static bool Set3Pressed => K != null && K.digit3Key.wasPressedThisFrame;
+        // held state for hold-to-preview (1/2/3): 0 = none, else the digit held
+        public static int ExposureDigitHeld
+        {
+            get
+            {
+                var k = K;
+                if (k == null) return 0;
+                if (k.digit1Key.isPressed) return 1;
+                if (k.digit2Key.isPressed) return 2;
+                if (k.digit3Key.isPressed) return 3;
+                return 0;
+            }
+        }
+        public static int ExposureDigitReleased
+        {
+            get
+            {
+                var k = K;
+                if (k == null) return 0;
+                if (k.digit1Key.wasReleasedThisFrame) return 1;
+                if (k.digit2Key.wasReleasedThisFrame) return 2;
+                if (k.digit3Key.wasReleasedThisFrame) return 3;
+                return 0;
+            }
+        }
         public static bool CycleForwardPressed => K != null && K.eKey.wasPressedThisFrame;
         public static bool CycleBackPressed => K != null && K.qKey.wasPressedThisFrame;
         public static bool RestartPressed => K != null && K.rKey.wasPressedThisFrame;

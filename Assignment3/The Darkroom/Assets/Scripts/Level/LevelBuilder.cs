@@ -36,6 +36,8 @@ namespace Darkroom
                     LightLift(rl.name, rl.cx, rl.topY, rl.bottomY, new Vector2(rl.w, rl.h));
                 foreach (var t in room.trails)
                     Trail(t.name, t.points);
+                foreach (var fp in room.fixPlats)
+                    Latent(fp.name, new Vector2(fp.cx, fp.cy), new Vector2(fp.w, fp.h));
                 foreach (var e in room.enemies)
                     Enemy(e.name, new Vector2(e.cx, e.cy), e.range, e.speed);
                 foreach (var d in room.doors)
@@ -47,7 +49,23 @@ namespace Darkroom
                 foreach (var h in room.hints)
                     Hint(h.text, new Vector2(h.cx, h.cy), new Vector2(h.w, h.h));
                 foreach (var x in room.exits)
-                    Exit(new Vector2(x.cx, x.cy), new Vector2(x.w, x.h));
+                {
+                    var ex = Exit(new Vector2(x.cx, x.cy), new Vector2(x.w, x.h));
+                    // room 0's exit is the prologue's blank-paper door (enter-photo
+                    // cinematic), not the finale door — and it reads as a calm blank
+                    // sheet, not a blinding doorway, until the cinematic's flash
+                    if (r == 0)
+                    {
+                        var le = ex.GetComponent<LevelExit>();
+                        if (le != null) le.IsPrologueDoor = true;
+                        var inner = ex.transform.Find("Inner");
+                        if (inner != null)
+                        {
+                            var isr = inner.GetComponent<SpriteRenderer>();
+                            if (isr != null) isr.color = new Color(0.95f, 0.93f, 0.87f, 1f); // blank photo paper
+                        }
+                    }
+                }
             }
 
             // pass 2: sensors, wired to their doors
@@ -61,6 +79,9 @@ namespace Darkroom
                     Sensor(s.name, new Vector2(s.cx, s.cy), door, s.mode, s.lux);
                 }
             }
+
+            // the prologue's restrained darkroom dressing (room 0 is always built)
+            BuildPrologueProps();
 
             // Room 9 set piece: the corridor blackout (rebuilt with the level)
             if (last >= 9)
@@ -82,6 +103,229 @@ namespace Darkroom
             if (GameManager.DevWarpEnabled) BuildDevSandbox();
 
             return rootGO;
+        }
+
+        /// Restrained darkroom set-dressing for the prologue entrance: a dim red
+        /// safelight on the back wall (prominent in UNDER, washed out by the work
+        /// light in NORMAL — the per-exposure lighting carries the "safelight rises"
+        /// read for free) and a couple of developing trays on the bench. All pure
+        /// decoration — no colliders, behind gameplay; the illustrated backdrop
+        /// carries the rest.
+        static void BuildPrologueProps()
+        {
+            // single container (one direct child of _root; the validator accounts
+            // for it) so the loose decoration doesn't drift the object-count check
+            var container = new GameObject("PrologueProps");
+            container.transform.SetParent(_root, false);
+            var parent = container.transform;
+            var dir = container.AddComponent<PrologueDirector>();
+
+            // --- the red safelights: drawn IN CODE like the hanging work-lamps (cord +
+            // shade + bulb + glow + a short beam) but RED, plus the real red light each
+            // casts. Several down the corridor so one is always in view; the director
+            // swings BOTH the glow and the red Light2D hard with safelight/work-light. ---
+            // interleaved BETWEEN the warm work-lamps (which hang at -44/-33/-22/-9 in
+            // BackdropBuilder) so a red safelight never stacks on top of a white lamp
+            BuildSafelight(parent, dir, -38.5f);
+            BuildSafelight(parent, dir, -27.5f);
+            BuildSafelight(parent, dir, -15.5f);
+
+            // --- LAYER 1: the roll on the drying line — eleven clipped frames, ten
+            // dim/developed, the eleventh a blank sheet (the premise, shown not told) ---
+            BuildDryingRoll(parent);
+
+            // --- LAYER 2: a FEW faint negative-scratch lines, scattered down the
+            // corridor walls (varied length/angle so they read as film damage, not a
+            // pattern). The director fades them IN under the safelight, OUT in work light ---
+            float[,] sc = { { -42f, 3.2f, 2.4f, 7f }, { -31f, 4.0f, 1.8f, -9f },
+                            { -18f, 3.4f, 2.8f, 5f }, { -9f, 3.6f, 2.0f, -6f } };
+            for (int i = 0; i < sc.GetLength(0); i++)
+                dir.Scratches.Add(BuildScratch(parent, sc[i, 0], sc[i, 1], sc[i, 2], sc[i, 3]));
+
+            // developing trays on the bench (mid-corridor, under the drying roll)
+            PrologueTray(parent, -30.6f, 0.72f);
+            PrologueTray(parent, -29.6f, 0.72f);
+
+            // --- LAYER 1 (cont.): the workbench the trays sit on, and the enlarger
+            // standing beside it — the iconic darkroom set, pure dark silhouettes ---
+            PrologueBench(parent);
+            PrologueEnlarger(parent);
+
+            // --- LAYER 2 (cont.): the "photo lines over reality" overlay. Platform
+            // tops develop into photo-edges and seams surface on the blank-paper door;
+            // the director fades them IN under the safelight (UNDER), OUT under the
+            // work light (NORMAL), alongside the negative scratches. ---
+            Color edge = new Color(0.78f, 0.80f, 0.84f, 1f); // soft off-white, not neon
+            dir.Overlays.Add(BuildOverlayLine(parent, "R0_FloorEdge", -35.25f, 0.5f, 24f, 0.04f, 0f, edge, VisualFactory.OrderExposure - 1));
+            dir.Overlays.Add(BuildOverlayLine(parent, "R0_FarEdge",    -7f,   2.8f, 4f,  0.04f, 0f, edge, VisualFactory.OrderExposure - 1));
+            Color seam = new Color(0.05f, 0.05f, 0.07f, 1f);
+            dir.Overlays.Add(BuildOverlayLine(parent, "R0_DoorSeam",   -6f,   4.4f, 0.05f, 2.8f,  0f, seam, VisualFactory.OrderExit + 1));
+            dir.Overlays.Add(BuildOverlayLine(parent, "R0_DoorCrackA", -6.3f, 4.9f, 0.04f, 1.2f,  9f, seam, VisualFactory.OrderExit + 1));
+            dir.Overlays.Add(BuildOverlayLine(parent, "R0_DoorCrackB", -5.7f, 3.9f, 0.04f, 1.4f, -7f, seam, VisualFactory.OrderExit + 1));
+        }
+
+        /// The red safelight, drawn procedurally in the same idiom as the hanging
+        /// work-lamps (BackdropBuilder.Lamp): a cord, a dark shade, an HDR bulb, a
+        /// soft glow halo, and a short downward beam — but RED. The glow is handed to
+        /// the PrologueDirector, which lifts it under the safelight (UNDER) and washes
+        /// it out under the work light (NORMAL). A real red Light2D rides along.
+        static void BuildSafelight(Transform parent, PrologueDirector dir, float x)
+        {
+            var go = new GameObject("R0_Safelight");
+            go.transform.SetParent(parent, false);
+            go.transform.position = new Vector3(x, 3.9f, 0f); // the hang point (ceiling)
+
+            // cord down to the fixture, and a dark housing/shade
+            SafelightPart(go.transform, new Vector3(0f, -0.35f, 0f), new Vector3(0.04f, 0.7f, 1f),
+                VisualFactory.WhiteSprite, new Color(0.08f, 0.08f, 0.09f, 1f), VisualFactory.SpriteMat, VisualFactory.OrderExposure - 6);
+            SafelightPart(go.transform, new Vector3(0f, -0.78f, 0f), new Vector3(0.6f, 0.6f, 1f),
+                PixelArt.ConeShade, new Color(0.12f, 0.05f, 0.05f, 1f), VisualFactory.SpriteMat, VisualFactory.OrderExposure - 5);
+
+            // HDR red bulb (>1 so the bloom haloes it into a soft red orb)
+            var bulb = SafelightPart(go.transform, new Vector3(0f, -0.8f, 0f), new Vector3(0.13f, 0.13f, 1f),
+                PixelArt.Disc, new Color(1.3f, 0.14f, 0.11f, 1f), VisualFactory.GlowMat, VisualFactory.OrderExposure - 3);
+
+            // the soft red glow halo — the director drives THIS one
+            var glow = SafelightPart(go.transform, new Vector3(0f, -0.78f, 0f), new Vector3(1.15f, 1.15f, 1f),
+                PixelArt.SoftGlow, new Color(1.4f, 0.13f, 0.10f, 1f), VisualFactory.GlowMat, VisualFactory.OrderExposure - 4);
+
+            // a short red beam spilling down from the bulb (the lamps' volumetric cue)
+            SafelightPart(go.transform, new Vector3(0f, -1.2f, 0f), new Vector3(0.75f, 0.7f, 1f),
+                PixelArt.LightBeam, new Color(1.0f, 0.2f, 0.15f, 0.75f), VisualFactory.GlowMat, VisualFactory.OrderExposure - 5);
+
+            // the director swings both the halo and the real red light with the mode
+            dir.Safelights.Add(glow); // rises under the safelight, washes out under the work light
+            var light = LightDirector.CreatePoint(go.transform, new Vector2(0f, -0.8f),
+                new Color(0.9f, 0.16f, 0.12f), 5.5f, 0.12f);
+            dir.SafeLights2D.Add(light);
+        }
+
+        /// One part of the procedural safelight (sprite + colour + material + order).
+        static SpriteRenderer SafelightPart(Transform parent, Vector3 localPos, Vector3 scale, Sprite sprite, Color col, Material mat, int order)
+        {
+            var g = new GameObject("Part");
+            g.transform.SetParent(parent, false);
+            g.transform.localPosition = localPos;
+            g.transform.localScale = scale;
+            var sr = g.AddComponent<SpriteRenderer>();
+            sr.sprite = sprite;
+            sr.sharedMaterial = mat;
+            sr.color = col;
+            sr.sortingOrder = order;
+            return sr;
+        }
+
+        /// A simple unlit dark-silhouette rectangle for prologue set-dressing.
+        static void PropRect(Transform parent, string name, float cx, float cy, float w, float h, Color col, int order)
+        {
+            var g = new GameObject(name);
+            g.transform.SetParent(parent, false);
+            g.transform.position = new Vector3(cx, cy, 0f);
+            g.transform.localScale = new Vector3(w, h, 1f);
+            var sr = g.AddComponent<SpriteRenderer>();
+            sr.sprite = VisualFactory.WhiteSprite;
+            sr.sharedMaterial = VisualFactory.SpriteMat;
+            sr.color = col;
+            sr.sortingOrder = order;
+        }
+
+        /// A thin line that starts hidden (alpha 0) — the PrologueDirector fades its
+        /// alpha in under the safelight. Returns the renderer so it can be registered.
+        static SpriteRenderer BuildOverlayLine(Transform parent, string name, float cx, float cy, float w, float h, float angle, Color col, int order)
+        {
+            var g = new GameObject(name);
+            g.transform.SetParent(parent, false);
+            g.transform.position = new Vector3(cx, cy, 0f);
+            if (Mathf.Abs(angle) > 0.001f) g.transform.rotation = Quaternion.Euler(0f, 0f, angle);
+            g.transform.localScale = new Vector3(w, h, 1f);
+            var sr = g.AddComponent<SpriteRenderer>();
+            sr.sprite = VisualFactory.WhiteSprite;
+            sr.sharedMaterial = VisualFactory.SpriteMat;
+            col.a = 0f; sr.color = col; // hidden until the director lifts it under the safelight
+            sr.sortingOrder = order;
+            return sr;
+        }
+
+        /// The workbench under the developing trays: a dark counter top + apron.
+        static void PrologueBench(Transform parent)
+        {
+            PropRect(parent, "R0_BenchTop",   -30f, 0.62f, 2.6f, 0.14f, new Color(0.12f, 0.12f, 0.14f, 1f), VisualFactory.OrderExposure - 4);
+            PropRect(parent, "R0_BenchApron", -30f, 0.20f, 2.4f, 0.80f, new Color(0.08f, 0.08f, 0.10f, 1f), VisualFactory.OrderExposure - 5);
+        }
+
+        /// The enlarger: an upright column on the bench, a cantilevered lamphouse
+        /// head, and the lens pointed down at the baseboard — a darkroom landmark.
+        static void PrologueEnlarger(Transform parent)
+        {
+            const float ex = -32f;
+            var col = new Color(0.09f, 0.09f, 0.11f, 1f);
+            int order = VisualFactory.OrderExposure - 3;
+            PropRect(parent, "R0_EnlargerBase",   ex,        0.74f, 0.90f, 0.10f, col, order);
+            PropRect(parent, "R0_EnlargerColumn", ex - 0.32f, 1.70f, 0.12f, 2.00f, col, order);
+            PropRect(parent, "R0_EnlargerArm",    ex - 0.18f, 2.55f, 0.40f, 0.14f, col, order);
+            PropRect(parent, "R0_EnlargerHead",   ex,        2.55f, 0.78f, 0.46f, col, order);
+            PropRect(parent, "R0_EnlargerLens",   ex,        2.18f, 0.26f, 0.34f, col, order);
+        }
+
+        /// The drying line: a wire with 11 clipped frames — ten dim (developed), the
+        /// eleventh a brighter blank sheet. The "Frame 11 is blank" beat, made visible.
+        static void BuildDryingRoll(Transform parent)
+        {
+            const float lineY = 3.7f, x0 = -34f, step = 0.9f;
+            const int n = 11;
+
+            var wire = new GameObject("R0_DryingWire");
+            wire.transform.SetParent(parent, false);
+            wire.transform.position = new Vector3(x0 + (n - 1) * step * 0.5f, lineY, 0f);
+            wire.transform.localScale = new Vector3((n - 1) * step + 0.4f, 0.03f, 1f);
+            var wsr = wire.AddComponent<SpriteRenderer>();
+            wsr.sprite = VisualFactory.WhiteSprite;
+            wsr.sharedMaterial = VisualFactory.SpriteMat;
+            wsr.color = new Color(0.18f, 0.18f, 0.20f, 1f);
+            wsr.sortingOrder = VisualFactory.OrderExposure - 3;
+
+            for (int i = 0; i < n; i++)
+            {
+                bool blank = i == n - 1; // the 11th, unprinted
+                var photo = new GameObject(blank ? "R0_Frame11_Blank" : "R0_Frame" + (i + 1));
+                photo.transform.SetParent(parent, false);
+                photo.transform.position = new Vector3(x0 + i * step, lineY - 0.34f, 0f);
+                photo.transform.localScale = new Vector3(0.5f, 0.6f, 1f);
+                var psr = photo.AddComponent<SpriteRenderer>();
+                psr.sprite = VisualFactory.WhiteSprite;
+                psr.sharedMaterial = VisualFactory.SpriteMat;
+                psr.color = blank ? new Color(0.86f, 0.85f, 0.80f, 1f)
+                                  : new Color(0.15f + 0.02f * (i % 3), 0.15f, 0.17f, 1f);
+                psr.sortingOrder = VisualFactory.OrderExposure - 2;
+            }
+        }
+
+        static SpriteRenderer BuildScratch(Transform parent, float x, float y, float len, float angle)
+        {
+            var g = new GameObject("R0_Scratch");
+            g.transform.SetParent(parent, false);
+            g.transform.position = new Vector3(x, y, 0f);
+            g.transform.rotation = Quaternion.Euler(0f, 0f, angle);
+            g.transform.localScale = new Vector3(0.014f, len, 1f); // thin
+            var sr = g.AddComponent<SpriteRenderer>();
+            sr.sprite = VisualFactory.WhiteSprite;
+            sr.sharedMaterial = VisualFactory.SpriteMat; // soft alpha, not a glowing neon stick
+            sr.color = new Color(0.62f, 0.66f, 0.72f, 0f); // desaturated grey-blue film damage, faded in by the director
+            sr.sortingOrder = VisualFactory.OrderExposure - 1;
+            return sr;
+        }
+
+        static void PrologueTray(Transform parent, float x, float y)
+        {
+            var t = new GameObject("R0_Tray");
+            t.transform.SetParent(parent, false);
+            t.transform.position = new Vector3(x, y, 0f);
+            t.transform.localScale = new Vector3(0.85f, 0.18f, 1f);
+            var sr = t.AddComponent<SpriteRenderer>();
+            sr.sprite = VisualFactory.WhiteSprite;
+            sr.sharedMaterial = VisualFactory.SpriteMat;
+            sr.color = new Color(0.10f, 0.10f, 0.12f, 1f);
+            sr.sortingOrder = VisualFactory.OrderExposure - 3;
         }
 
         /// A development-only sandbox far to the right (x ~392+), reached with
@@ -132,7 +376,18 @@ namespace Darkroom
             LightLift("Lab_RiseLift", 434f, 8f, 3.8f, new Vector2(2.4f, 0.6f));
             Hint("RISE LIFT / 光浮力 · press 3 (OVER): a light slab rises — ride it up.", new Vector2(433f, 5.4f), new Vector2(4.2f, 2f));
 
-            Hint("END · press [ to leave, P to reset.", new Vector2(438f, 8.7f), new Vector2(3.5f, 2f));
+            // 6) DUAL-USE LIGHT — the bright stroke you climb is ALSO the key. A
+            // cyan light-meter on the wall face is too high to stand beside; draw
+            // a rising bright stroke (OVER) up the wall — it CLIMBS you up AND its
+            // light trips the meter, opening the gate. One stroke = ladder + key.
+            Box("Lab_L_Floor", SG, new Vector2(445f, 3f), new Vector2(10f, 1f));     // x440-450, top 3.5
+            Box("Lab_L_Wall",  SG, new Vector2(448f, 5f), new Vector2(1f, 3f));      // x447.5-448.5, top 6.5
+            var labDoorL = Door("Lab_Door_L", new Vector2(449.1f, 7f), new Vector2(0.4f, 2f)); // gate, y6-8
+            Sensor("Lab_L_Meter", new Vector2(447.3f, 5.2f), labDoorL, 1, 0.4f);     // LocalLux on the wall face
+            Box("Lab_L_Exit",  SG, new Vector2(450.5f, 6f), new Vector2(2f, 1f));    // landing past the gate
+            Hint("DUAL-USE LIGHT · in OVER draw a rising stroke up the wall — it CLIMBS you AND lights the cyan meter to open the gate.", new Vector2(443.5f, 5.7f), new Vector2(4.8f, 2f));
+
+            Hint("END · press [ to leave, P to reset.", new Vector2(450.5f, 8.2f), new Vector2(3.5f, 2f));
         }
 
         // ---------- helpers (spec 8.14) ----------
@@ -158,20 +413,43 @@ namespace Darkroom
                 bsr.color = Color.white;
                 bsr.sortingOrder = VisualFactory.OrderFor(t);
 
+                // film-negative strip filling the box, behind the bright core line
+                var neg = new GameObject("NegStrip");
+                neg.transform.SetParent(go.transform, false);
+                var nsr = neg.AddComponent<SpriteRenderer>();
+                nsr.sprite = ProcGfx.FilmStripTile(false);
+                nsr.sharedMaterial = VisualFactory.GlowMat;
+                nsr.color = Color.white;
+                nsr.sortingOrder = VisualFactory.OrderExposure - 1;
+                var nb = nsr.sprite.bounds.size;
+                neg.transform.localScale = new Vector3(s.x / nb.x, s.y / nb.y, 1f);
+
                 var dbc = go.AddComponent<BoxCollider2D>();
                 dbc.size = s;
                 var deo = go.AddComponent<ExposureObject>();
                 deo.type = t;
                 deo.boxSize = s;
                 var dgsr = Halo(go.transform, new Vector2(s.x + 0.5f, s.y + 0.5f),
-                    new Color(0.36f, 0.46f, 0.78f, 0f), VisualFactory.OrderExposure - 1);
+                    new Color(0.36f, 0.46f, 0.78f, 0f), VisualFactory.OrderExposure - 2);
                 var dlight = LightDirector.CreatePoint(go.transform, Vector2.zero,
                     new Color(0.45f, 0.56f, 0.90f), Mathf.Max(s.x, s.y) * 0.5f + 1.6f, 0f);
+
+                // cold light motes drifting along the strip — the developing "life"
+                var drift = go.AddComponent<Drift>();
+                drift.area = new Vector2(s.x * 0.92f, s.y * 0.6f);
+                drift.velocity = new Vector2(0.6f, 0f);
+                drift.size = Mathf.Clamp(s.y * 0.5f, 0.08f, 0.22f);
+                drift.count = Mathf.Clamp(Mathf.RoundToInt(s.x), 2, 6);
+                drift.color = new Color(VisualFactory.DarkStroke.r, VisualFactory.DarkStroke.g, VisualFactory.DarkStroke.b, 0.5f);
+                drift.sortingOrder = VisualFactory.OrderExposure + 1;
+
                 deo.OnAlphaApplied = a =>
                 {
                     var bc2 = bsr.color; bc2.a = a; bsr.color = bc2;
+                    var ns = nsr.color; ns.a = a; nsr.color = ns;
                     var c2 = dgsr.color; c2.a = a * 0.28f; dgsr.color = c2;
                     dlight.intensity = a * 0.55f;
+                    drift.SetMaster(a);
                 };
                 deo.Reapply();
                 return go;
@@ -180,33 +458,66 @@ namespace Darkroom
             go = NewTiledBox(name, c, s, TileFor(t, s), VisualFactory.OrderFor(t), Layers.World);
             if (t == ExposureObjectType.StaticGround)
             {
-                // photo textures are bright — tint them down into the dark
+                // darker face: the platforms are lit, so a dark face stays calm even when
+                // a lamp / OVER warmth hits it (it used to "pop" jarringly bright); the
+                // bright top lip below carries the read + the design.
                 bool tall = s.y > s.x * 1.5f;
                 go.GetComponent<SpriteRenderer>().color = tall
-                    ? new Color(0.26f, 0.25f, 0.28f, 1f)
-                    : new Color(0.30f, 0.30f, 0.34f, 1f);
+                    ? new Color(0.185f, 0.180f, 0.205f, 1f)
+                    : new Color(0.205f, 0.205f, 0.235f, 1f);
             }
             var bc = go.AddComponent<BoxCollider2D>();
             bc.size = s;
 
-            // catch-light along walkable tops (cinematic restyle)
+            // walkable platforms get a "lit lip": a soft rim that bleeds light down from
+            // the top edge (3D-ledge cue) + a bright core catch-light on top of it. The
+            // dark face + this lip = a designed ledge instead of a flat bright slab.
             if (t == ExposureObjectType.StaticGround && s.x >= 1f)
             {
+                var rim = new GameObject("EdgeRim");
+                rim.transform.SetParent(go.transform, false);
+                rim.transform.localPosition = new Vector3(0f, s.y / 2f - 0.02f, 0f);
+                rim.transform.localScale = new Vector3(s.x, Mathf.Min(0.55f, s.y * 0.6f), 1f);
+                var rsr = rim.AddComponent<SpriteRenderer>();
+                rsr.sprite = PixelArt.EdgeFade;             // pivot top -> grows downward
+                rsr.sharedMaterial = VisualFactory.GlowMat; // soft, blooms
+                rsr.color = new Color(0.50f, 0.51f, 0.58f, 0.30f);
+                rsr.sortingOrder = VisualFactory.OrderGround + 1;
+
                 var edge = new GameObject("EdgeLight");
                 edge.transform.SetParent(go.transform, false);
-                edge.transform.localPosition = new Vector3(0f, s.y / 2f - 0.03f, 0f);
-                edge.transform.localScale = new Vector3(s.x, 0.06f, 1f);
+                edge.transform.localPosition = new Vector3(0f, s.y / 2f - 0.025f, 0f);
+                edge.transform.localScale = new Vector3(s.x, 0.05f, 1f);
                 var esr = edge.AddComponent<SpriteRenderer>();
                 esr.sprite = VisualFactory.WhiteSprite;
-                esr.sharedMaterial = VisualFactory.SpriteMat;
-                esr.color = new Color(0.30f, 0.30f, 0.34f, 0.6f);
-                esr.sortingOrder = VisualFactory.OrderGround + 1;
+                esr.sharedMaterial = VisualFactory.GlowMat; // bright core catch-light
+                esr.color = new Color(0.66f, 0.67f, 0.74f, 0.85f);
+                esr.sortingOrder = VisualFactory.OrderGround + 2; // on top of the rim
+
+                // the lip is UNLIT (blooms in Normal/Over) so it won't dim with the world
+                // in UNDER on its own — gate it down there or it would reveal the geometry.
+                go.AddComponent<PlatformLip>().Bind(rsr, esr);
             }
             if (t != ExposureObjectType.StaticGround)
             {
                 var eo = go.AddComponent<ExposureObject>();
                 eo.type = t;
                 eo.boxSize = s;
+
+                // BrightBarrier reads as a framed frosted print, not a white slab
+                if (t == ExposureObjectType.BrightBarrier)
+                {
+                    var frame = AddPaneFrame(go.transform, s,
+                        new Color(0.10f, 0.10f, 0.12f, 1f), VisualFactory.OrderExposure + 1);
+                    eo.OnAlphaApplied = a =>
+                    {
+                        for (int i = 0; i < frame.Length; i++)
+                        {
+                            var fc = frame[i].color; fc.a = a; frame[i].color = fc;
+                        }
+                    };
+                    eo.Reapply(); // root pane auto-fades; this matches the frame to it
+                }
             }
             return go;
         }
@@ -232,8 +543,8 @@ namespace Darkroom
                 case ExposureObjectType.DarkPath:      return PixelArt.DarkPathTile;
                 case ExposureObjectType.BrightBarrier: return PixelArt.BarrierTile;
                 default:
-                    // tall boxes read as brick walls, flat ones as concrete
-                    return s.y > s.x * 1.5f ? PixelArt.BrickTile : PixelArt.ConcreteTile;
+                    // tall boxes read as plaster walls, flat ones as concrete
+                    return s.y > s.x * 1.5f ? PixelArt.WallTile : PixelArt.ConcreteTile;
             }
         }
 
@@ -254,12 +565,37 @@ namespace Darkroom
             bc.size = s;
 
             // a cold halo so the shade reads against the near-black background
-            Halo(go.transform, new Vector2(s.x + 0.7f, s.y + 0.7f),
+            var ubHalo = Halo(go.transform, new Vector2(s.x + 0.7f, s.y + 0.7f),
                 new Color(0.24f, 0.20f, 0.36f, 0.22f), VisualFactory.OrderExposure - 1);
+
+            // roiling undeveloped-emulsion overlay (the "alive" boil)
+            var roilGO = new GameObject("Roil");
+            roilGO.transform.SetParent(go.transform, false);
+            var roil = roilGO.AddComponent<SpriteRenderer>();
+            roil.sprite = ProcGfx.EmulsionFrames[0];
+            roil.sharedMaterial = VisualFactory.GlowMat;
+            roil.drawMode = SpriteDrawMode.Tiled;
+            roil.size = s;
+            roil.color = new Color(1f, 1f, 1f, 0.5f);
+            roil.sortingOrder = VisualFactory.OrderExposure + 1;
+            var fc = roilGO.AddComponent<FrameCycle>();
+            fc.frames = ProcGfx.EmulsionFrames;
+            fc.fps = 6f;
+            fc.randomOrder = true;
+
+            var ubLight = LightDirector.CreatePoint(go.transform, new Vector2(0f, -s.y * 0.4f),
+                new Color(0.52f, 0.32f, 0.82f), Mathf.Max(s.x, s.y) * 0.5f + 1.2f, 0.4f);
 
             var ub = go.AddComponent<UmbralBarrier>();
             ub.retractThreshold = threshold;
             ub.boxSize = s;
+            ub.onAlpha = a =>
+            {
+                var rc = roil.color; rc.a = a * 0.5f; roil.color = rc;
+                var hc = ubHalo.color; hc.a = a * 0.22f; ubHalo.color = hc;
+                ubLight.intensity = a * 0.45f;
+            };
+            ub.onAlpha(1f); // starts sealed/solid
             return go;
         }
 
@@ -284,6 +620,12 @@ namespace Darkroom
             lift.topY = topY;
             lift.bottomY = bottomY;
             lift.boxSize = s;
+            lift.onAlpha = BuildLiftDecor(go, x, topY, bottomY, s,
+                new Color(0.70f, 0.55f, 1.10f, 1f),   // HDR violet catch-light
+                new Color(0.32f, 0.22f, 0.52f, 0.42f), // churning underside
+                VisualFactory.OrderExposure,
+                rails: false); // no static rails — the hidden descent must be
+                               // discovered (go dark), not telegraphed as a shaft
             return go;
         }
 
@@ -316,6 +658,38 @@ namespace Darkroom
             var eo = go.AddComponent<ExposureObject>();
             eo.type = ExposureObjectType.BrightStroke;
             eo.boxSize = s;
+
+            // a projected light bridge: bright caustic top edge + dust in the beam
+            var lbEdgeGO = new GameObject("Edge");
+            lbEdgeGO.transform.SetParent(go.transform, false);
+            lbEdgeGO.transform.localPosition = new Vector3(0f, s.y * 0.5f - 0.03f, 0f);
+            lbEdgeGO.transform.localScale = new Vector3(s.x, 0.08f, 1f);
+            var lbEdge = lbEdgeGO.AddComponent<SpriteRenderer>();
+            lbEdge.sprite = VisualFactory.WhiteSprite;
+            lbEdge.sharedMaterial = VisualFactory.GlowMat;
+            lbEdge.color = new Color(1.35f, 1.22f, 0.92f, 1f); // HDR caustic
+            lbEdge.sortingOrder = VisualFactory.OrderStroke + 1;
+
+            var lbDrift = go.AddComponent<Drift>();
+            lbDrift.area = new Vector2(s.x * 0.9f, s.y * 0.7f);
+            lbDrift.velocity = new Vector2(0.4f, 0.05f);
+            lbDrift.size = Mathf.Clamp(s.y * 0.4f, 0.07f, 0.18f);
+            lbDrift.count = Mathf.Clamp(Mathf.RoundToInt(s.x), 2, 6);
+            lbDrift.color = new Color(VisualFactory.BrightStroke.r, VisualFactory.BrightStroke.g, VisualFactory.BrightStroke.b, 0.4f);
+            lbDrift.sortingOrder = VisualFactory.OrderStroke + 1;
+
+            // a level-authored bridge (not a player stroke): like DarkTrail, it
+            // must be a HIDDEN puzzle — fully invisible in NORMAL (no 0.18 ghost),
+            // visible + solid only in OVER. Remap the matrix's faded NORMAL alpha
+            // to zero so the "use OVER here" trick isn't given away by just looking.
+            eo.OnAlphaApplied = a =>
+            {
+                float vis = Mathf.InverseLerp(0.18f, 1f, a); // 0 in NORMAL/UNDER, 1 in OVER
+                var bodyC = sr.color; bodyC.a = vis; sr.color = bodyC;
+                var ec = lbEdge.color; ec.a = vis; lbEdge.color = ec;
+                lbDrift.SetMaster(vis);
+            };
+            eo.Reapply();
             return go;
         }
 
@@ -323,12 +697,33 @@ namespace Darkroom
         /// ~1.5 s and it burns a permanent hole. Pair with an enemy for tension.
         public static GameObject BurnWall(string name, Vector2 c, Vector2 s)
         {
-            var go = NewTiledBox(name, c, s, PixelArt.BarrierTile, VisualFactory.OrderExposure, Layers.World);
+            var go = NewTiledBox(name, c, s, ProcGfx.PhotoPaperTile, VisualFactory.OrderExposure, Layers.World);
             go.GetComponent<SpriteRenderer>().color = new Color(0.92f, 0.92f, 0.90f, 1f); // white paper
             var bc = go.AddComponent<BoxCollider2D>();
             bc.size = s;
             var bp = go.AddComponent<BurnPaper>();
             bp.boxSize = s;
+
+            // a charred hole that grows from the centre as the paper burns through
+            var scarGO = new GameObject("Char");
+            scarGO.transform.SetParent(go.transform, false);
+            var scar = scarGO.AddComponent<SpriteRenderer>();
+            scar.sprite = ProcGfx.CharScar;
+            scar.sharedMaterial = VisualFactory.SpriteMat;
+            scar.color = new Color(1f, 1f, 1f, 0f);
+            scar.sortingOrder = VisualFactory.OrderExposure + 1;
+            float scarFit = Mathf.Min(s.x, s.y) * 1.15f / Mathf.Max(0.01f, scar.sprite.bounds.size.x);
+            bp.OnCharProgress = k =>
+            {
+                float sc = Mathf.Lerp(0.15f, 1.15f, k) * scarFit;
+                scarGO.transform.localScale = new Vector3(sc, sc, 1f);
+                var cc = scar.color; cc.a = Mathf.Clamp01(k * 1.1f); scar.color = cc;
+            };
+            bp.OnBurned = () =>
+            {
+                scarGO.transform.localScale = Vector3.one * (1.15f * scarFit);
+                scar.color = new Color(1f, 1f, 1f, 0.85f);
+            };
             return go;
         }
 
@@ -340,8 +735,21 @@ namespace Darkroom
             go.GetComponent<SpriteRenderer>().color = new Color(0.55f, 0.78f, 0.95f, 1f); // cool latent tint
             var bc = go.AddComponent<BoxCollider2D>();
             bc.size = s;
+
+            // latent grain veil over the not-yet-developed platform (resolves on Fix)
+            var veilGO = new GameObject("Grain");
+            veilGO.transform.SetParent(go.transform, false);
+            var veil = veilGO.AddComponent<SpriteRenderer>();
+            veil.sprite = ProcGfx.GrainTile;
+            veil.sharedMaterial = VisualFactory.GlowMat;
+            veil.drawMode = SpriteDrawMode.Tiled;
+            veil.size = s;
+            veil.color = new Color(0.70f, 0.82f, 1f, 0.55f);
+            veil.sortingOrder = VisualFactory.OrderGround + 1;
+
             var fp = go.AddComponent<FixPlatform>();
             fp.boxSize = s;
+            fp.grainVeil = veil;
             return go;
         }
 
@@ -364,6 +772,10 @@ namespace Darkroom
             rl.topY = topY;
             rl.bottomY = bottomY;
             rl.boxSize = s;
+            rl.onAlpha = BuildLiftDecor(go, x, topY, bottomY, s,
+                new Color(1.20f, 1.00f, 0.70f, 1f),   // HDR warm hot edge
+                new Color(0.90f, 0.70f, 0.35f, 0.45f), // warm caustic underside
+                VisualFactory.OrderStroke);
             return go;
         }
 
@@ -417,7 +829,10 @@ namespace Darkroom
             accent.sortingOrder = VisualFactory.OrderSensor + 1;
 
             // a light meter wears a small cool "iris" so the player knows OVER
-            // alone won't trip it — it is waiting for light to be brought to it
+            // alone won't trip it — it is waiting for light to be brought to it.
+            // Inside the iris ring sits a "fill" disc that the sensor grows +
+            // brightens with delivered lux (the readout: bring light here).
+            SpriteRenderer luxFill = null;
             if (lightMeter)
             {
                 var iris = new GameObject("Iris");
@@ -426,14 +841,24 @@ namespace Darkroom
                 var isr = iris.AddComponent<SpriteRenderer>();
                 isr.sprite = PixelArt.Disc;
                 isr.sharedMaterial = VisualFactory.GlowMat;
-                isr.color = new Color(VisualFactory.DarkStroke.r, VisualFactory.DarkStroke.g, VisualFactory.DarkStroke.b, 0.5f);
+                isr.color = new Color(VisualFactory.DarkStroke.r, VisualFactory.DarkStroke.g, VisualFactory.DarkStroke.b, 0.28f);
                 isr.sortingOrder = VisualFactory.OrderSensor + 1;
+
+                var fillGO = new GameObject("LuxFill");
+                fillGO.transform.SetParent(go.transform, false);
+                fillGO.transform.localScale = new Vector3(0.12f, 0.12f, 1f);
+                luxFill = fillGO.AddComponent<SpriteRenderer>();
+                luxFill.sprite = PixelArt.Disc;
+                luxFill.sharedMaterial = VisualFactory.GlowMat;
+                luxFill.color = new Color(0.72f, 0.94f, 1f, 0.10f); // HDR cyan → blooms as it fills
+                luxFill.sortingOrder = VisualFactory.OrderSensor + 2;
             }
 
             var sensor = go.AddComponent<PhotoSensor>();
             sensor.Door = door;
             sensor.mode = (PhotoSensor.SensorMode)mode;
             sensor.luxThreshold = lux;
+            sensor.LuxFill = luxFill;
             sensor.Init(go.GetComponent<SpriteRenderer>(), accent);
             sensor.ActivateLight = LightDirector.CreatePoint(go.transform, Vector2.zero,
                 lightMeter ? new Color(0.62f, 0.85f, 0.90f) : new Color(1f, 0.93f, 0.78f), 2.5f, 0.5f);
@@ -447,20 +872,43 @@ namespace Darkroom
             var bc = go.AddComponent<BoxCollider2D>();
             bc.size = s;
 
-            // two circular "speaker" lenses on the panel (concept-art look)
-            for (int i = 0; i < 2; i++)
+            // dark recessed lens lower on the panel (concept-art detail)
+            var lens = new GameObject("Lens");
+            lens.transform.SetParent(go.transform, false);
+            lens.transform.localPosition = new Vector3(0f, s.y * -0.18f, 0f);
+            lens.transform.localScale = new Vector3(s.x * 0.5f, s.x * 0.5f, 1f);
+            var lsr = lens.AddComponent<SpriteRenderer>();
+            lsr.sprite = PixelArt.Disc;
+            lsr.sharedMaterial = VisualFactory.SpriteMat;
+            lsr.color = new Color(0.09f, 0.09f, 0.11f, 1f);
+            lsr.sortingOrder = VisualFactory.OrderDoor + 1;
+
+            var door = go.AddComponent<SensorDoor>();
+
+            // a darkroom light-lock: a safelight status lamp, red & breathing while
+            // sealed, turning warm the instant it opens
+            var lampGO = new GameObject("Lamp");
+            lampGO.transform.SetParent(go.transform, false);
+            lampGO.transform.localPosition = new Vector3(0f, s.y * 0.30f, 0f);
+            lampGO.transform.localScale = new Vector3(s.x * 0.45f, s.x * 0.45f, 1f);
+            var lamp = lampGO.AddComponent<SpriteRenderer>();
+            lamp.sprite = PixelArt.Disc;
+            lamp.sharedMaterial = VisualFactory.GlowMat;
+            lamp.color = new Color(1.5f, 0.22f, 0.18f, 1f); // HDR safelight red → blooms
+            lamp.sortingOrder = VisualFactory.OrderDoor + 2;
+            var lampLight = LightDirector.CreatePoint(go.transform, new Vector2(0f, s.y * 0.30f),
+                new Color(0.9f, 0.2f, 0.18f), 1.8f, 0.5f);
+            var lampPulse = lampGO.AddComponent<GlowPulse>();
+            lampPulse.Target = lamp; lampPulse.Min = 0.7f; lampPulse.Max = 1f; lampPulse.Speed = 2.5f;
+            lampPulse.Light = lampLight; lampPulse.LightMin = 0.35f; lampPulse.LightMax = 0.6f;
+            door.OnOpen = () =>
             {
-                var lens = new GameObject("Lens" + i);
-                lens.transform.SetParent(go.transform, false);
-                lens.transform.localPosition = new Vector3(0f, s.y * (i == 0 ? 0.18f : -0.10f), 0f);
-                lens.transform.localScale = new Vector3(s.x * 0.62f, s.x * 0.62f, 1f);
-                var lsr = lens.AddComponent<SpriteRenderer>();
-                lsr.sprite = PixelArt.Disc;
-                lsr.sharedMaterial = VisualFactory.SpriteMat;
-                lsr.color = new Color(0.10f, 0.10f, 0.12f, 1f);
-                lsr.sortingOrder = VisualFactory.OrderDoor + 1;
-            }
-            return go.AddComponent<SensorDoor>();
+                lampPulse.enabled = false;        // let the door's fade win
+                lampLight.enabled = false;
+                lamp.color = new Color(1.3f, 1.15f, 0.85f, 1f); // turns welcoming-cream
+                StrokeSparkle.Burst(lampGO.transform.position, new Color(1f, 0.93f, 0.78f, 1f), 10);
+            };
+            return door;
         }
 
         public static GameObject Pickup(Ability a, Vector2 c)
@@ -553,7 +1001,7 @@ namespace Darkroom
             var isr = inner.AddComponent<SpriteRenderer>();
             isr.sprite = VisualFactory.WhiteSprite;
             isr.sharedMaterial = VisualFactory.GlowMat;
-            isr.color = new Color(1f, 0.98f, 0.92f, 0.96f);
+            isr.color = new Color(1.6f, 1.5f, 1.32f, 1f); // HDR doorway — blooms blinding
             isr.sortingOrder = VisualFactory.OrderExit;
 
             var halo = Halo(go.transform, new Vector2(s.x + 3.5f, s.y + 2.5f),
@@ -567,7 +1015,107 @@ namespace Darkroom
                 new Color(1f, 0.96f, 0.86f), 5f, 0.7f);
             pulse.LightMin = 0.55f;
             pulse.LightMax = 0.85f;
+
+            // warm dust motes drifting up through the doorway light
+            var exitDrift = go.AddComponent<Drift>();
+            exitDrift.area = new Vector2(s.x * 1.1f, s.y * 1.2f);
+            exitDrift.velocity = new Vector2(0.05f, 0.5f);
+            exitDrift.size = 0.16f;
+            exitDrift.count = 6;
+            exitDrift.color = new Color(1f, 0.95f, 0.84f, 0.5f);
+            exitDrift.sortingOrder = VisualFactory.OrderExit + 1;
             return go;
+        }
+
+        /// Four thin dark bars forming an inset pane/print frame around a box.
+        static SpriteRenderer[] AddPaneFrame(Transform parent, Vector2 s, Color col, int order)
+        {
+            const float t = 0.08f;
+            var bars = new SpriteRenderer[4];
+            var pos = new[]
+            {
+                new Vector3(0f, s.y * 0.5f - t * 0.5f, 0f), new Vector3(0f, -s.y * 0.5f + t * 0.5f, 0f),
+                new Vector3(-s.x * 0.5f + t * 0.5f, 0f, 0f), new Vector3(s.x * 0.5f - t * 0.5f, 0f, 0f),
+            };
+            var scl = new[]
+            {
+                new Vector3(s.x, t, 1f), new Vector3(s.x, t, 1f),
+                new Vector3(t, s.y, 1f), new Vector3(t, s.y, 1f),
+            };
+            for (int i = 0; i < 4; i++)
+            {
+                var g = new GameObject("Frame");
+                g.transform.SetParent(parent, false);
+                g.transform.localPosition = pos[i];
+                g.transform.localScale = scl[i];
+                var sr = g.AddComponent<SpriteRenderer>();
+                sr.sprite = VisualFactory.WhiteSprite;
+                sr.sharedMaterial = VisualFactory.SpriteMat;
+                sr.color = col;
+                sr.sortingOrder = order;
+                bars[i] = sr;
+            }
+            return bars;
+        }
+
+        /// Shared lift dressing: a bright HDR top catch-light, a breathing underside
+        /// glow, and always-visible shaft rails (parented to the level root, so they
+        /// stay even when the slab is gone). Returns the onAlpha action to fade the
+        /// slab-bound detail (rails persist; the breathing glow is gated on/off).
+        static System.Action<float> BuildLiftDecor(GameObject go, float x, float topY, float bottomY,
+            Vector2 s, Color edgeHDR, Color glow, int order, bool rails = true)
+        {
+            var edgeGO = new GameObject("Edge");
+            edgeGO.transform.SetParent(go.transform, false);
+            edgeGO.transform.localPosition = new Vector3(0f, s.y * 0.5f - 0.04f, 0f);
+            edgeGO.transform.localScale = new Vector3(s.x, 0.10f, 1f);
+            var edge = edgeGO.AddComponent<SpriteRenderer>();
+            edge.sprite = VisualFactory.WhiteSprite;
+            edge.sharedMaterial = VisualFactory.GlowMat;
+            edge.color = edgeHDR;
+            edge.sortingOrder = order + 1;
+
+            var underGO = new GameObject("Under");
+            underGO.transform.SetParent(go.transform, false);
+            underGO.transform.localPosition = new Vector3(0f, -s.y * 0.5f, 0f);
+            underGO.transform.localScale = new Vector3(s.x * 1.25f, s.y * 1.3f, 1f);
+            var under = underGO.AddComponent<SpriteRenderer>();
+            under.sprite = PixelArt.SoftGlow;
+            under.sharedMaterial = VisualFactory.GlowMat;
+            under.color = glow;
+            under.sortingOrder = order - 1;
+            var pulse = underGO.AddComponent<GlowPulse>();
+            pulse.Target = under;
+            pulse.Min = glow.a * 0.5f;
+            pulse.Max = glow.a;
+            pulse.Speed = 3f;
+
+            // shaft rails — always visible, parented to the level root (skipped
+            // for the shadow lift, whose whole point is to stay hidden until UNDER)
+            if (rails)
+            {
+                float railTop = topY + s.y * 0.5f, railBot = bottomY - s.y * 0.5f;
+                float railH = Mathf.Max(0.2f, railTop - railBot), railMid = (railTop + railBot) * 0.5f;
+                for (int i = 0; i < 2; i++)
+                {
+                    float rx = x + (i == 0 ? -1f : 1f) * (s.x * 0.5f - 0.03f);
+                    var railGO = new GameObject("Rail");
+                    railGO.transform.SetParent(_root, false);
+                    railGO.transform.position = new Vector3(rx, railMid, 0f);
+                    railGO.transform.localScale = new Vector3(0.06f, railH, 1f);
+                    var rail = railGO.AddComponent<SpriteRenderer>();
+                    rail.sprite = VisualFactory.WhiteSprite;
+                    rail.sharedMaterial = VisualFactory.SpriteMat;
+                    rail.color = new Color(0.17f, 0.16f, 0.20f, 1f);
+                    rail.sortingOrder = order - 2;
+                }
+            }
+
+            return a =>
+            {
+                var t = edge.color; t.a = a; edge.color = t;
+                under.enabled = a > 0.05f; // GlowPulse owns its alpha; gate on/off
+            };
         }
 
         // ---------- primitives ----------

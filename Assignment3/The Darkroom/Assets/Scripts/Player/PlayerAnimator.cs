@@ -29,11 +29,11 @@ namespace Darkroom
             // faint aura so the silhouette reads against pure dark
             var aura = new GameObject("Aura");
             aura.transform.SetParent(visual.transform, false);
-            aura.transform.localScale = new Vector3(2.2f, 2.6f, 1f);
+            aura.transform.localScale = new Vector3(2.4f, 2.8f, 1f);
             var asr = aura.AddComponent<SpriteRenderer>();
             asr.sprite = PixelArt.SoftGlow;
             asr.sharedMaterial = VisualFactory.GlowMat;
-            asr.color = new Color(0.85f, 0.88f, 0.95f, 0.10f);
+            asr.color = new Color(0.95f, 0.93f, 0.86f, 0.14f); // faint warm safelight halo
             asr.sortingOrder = VisualFactory.OrderPlayer - 1;
 
             var anim = pc.gameObject.AddComponent<PlayerAnimator>();
@@ -87,7 +87,9 @@ namespace Darkroom
 
             if (grounded && !_wasGrounded)
             {
-                _squash = 0.20f;
+                // squash scales with fall speed (same /15 reference the landing
+                // audio uses): light hops barely dip, the R9 drop compresses hard.
+                _squash = Mathf.Lerp(0.06f, 0.28f, Mathf.Clamp01(_lastFallSpeed / 15f));
                 if (AudioDirector.Instance != null)
                     AudioDirector.Instance.PlayLand(_lastFallSpeed / 15f);
             }

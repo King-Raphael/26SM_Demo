@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 
 namespace Darkroom
 {
@@ -10,7 +11,17 @@ namespace Darkroom
         /// Full game: 10 (set to 2 for the rooms 0-2 demo build).
         public const int BuildThroughRoomCount = 10;
 
-        public static readonly Vector2 SpawnPos = new Vector2(-3f, 1.5f);
+        // The prologue is an isolated pocket far to the left of Frame 1 (which
+        // starts at x 5.5). She walks a long corridor here; the paper-door then
+        // TELEPORTS her across the wide empty gap into Frame 1 — so the opening
+        // never reveals the path ahead, and the cut reads as entering elsewhere.
+        public static readonly Vector2 SpawnPos = new Vector2(-46f, 1.5f);
+
+        // Camera bounds while in the prologue pocket: low enough to follow her in,
+        // capped on the right so Frame 1 (x 5.5) is never on screen at the door.
+        public const float PrologueCamMinX = -40f, PrologueCamMaxX = -4.5f;
+        public const float LevelCamMinX = -2f, LevelCamMaxX = 170f;
+        public const float CamMinY = -1f, CamMaxY = 9f;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
@@ -27,6 +38,7 @@ namespace Darkroom
             managers.AddComponent<ExposureManager>();
             managers.AddComponent<AudioDirector>();
             managers.AddComponent<LightDirector>();
+            managers.AddComponent<PostFXDirector>();
             managers.AddComponent<LightField>();
             managers.AddComponent<PauseController>();
             managers.AddComponent<PhotoAlbum>();
@@ -38,6 +50,7 @@ namespace Darkroom
             var player = PlayerController.Create(SpawnPos);
             gm.Player = player;
             gm.InitCheckpoint(SpawnPos);
+            gm.GrantNegativeSilently(); // the safelight is on from the first frame (the prologue)
 
             SetupCamera(player.transform);
         }
@@ -56,6 +69,14 @@ namespace Darkroom
             cam.orthographicSize = 5.5f;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = VisualFactory.Background;
+            cam.allowHDR = true; // bloom needs an HDR buffer to bleed into
+
+            // Turn the dormant URP post stack on for this camera and add post AA —
+            // PostFXDirector then drives the global Volume per exposure state.
+            var camData = cam.GetUniversalAdditionalCameraData();
+            camData.renderPostProcessing = true;
+            camData.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing;
+            camData.antialiasingQuality = AntialiasingQuality.High;
 
             if (Object.FindAnyObjectByType<AudioListener>() == null)
                 cam.gameObject.AddComponent<AudioListener>();
@@ -63,6 +84,9 @@ namespace Darkroom
             var follow = cam.GetComponent<CameraFollow>();
             if (follow == null) follow = cam.gameObject.AddComponent<CameraFollow>();
             follow.Target = target;
+            // fence the camera to the prologue pocket; the tint still tracks the
+            // full journey (TintMin/Max default to the real-level span)
+            follow.SetBounds(PrologueCamMinX, PrologueCamMaxX, CamMinY, CamMaxY);
             follow.Snap();
 
             if (cam.GetComponent<DustMotes>() == null)

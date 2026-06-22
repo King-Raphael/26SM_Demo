@@ -52,15 +52,16 @@ namespace Darkroom
             glowGO.transform.SetParent(go.transform, false);
             var glow = glowGO.AddComponent<LineRenderer>();
             glow.useWorldSpace = true;
-            glow.widthMultiplier = Width * 3.6f;
+            glow.widthMultiplier = Width * 5f;
             glow.widthCurve = taper;
-            glow.sharedMaterial = VisualFactory.GlowMat;
+            glow.sharedMaterial = VisualFactory.BeamMat;        // feathered soft beam
+            glow.textureMode = LineTextureMode.Stretch;
             glow.sortingOrder = VisualFactory.OrderStroke - 1;
-            glow.numCapVertices = 4;
-            glow.numCornerVertices = 2;
+            glow.numCapVertices = 6;
+            glow.numCornerVertices = 4;
             glow.positionCount = 0;
             var gc = c;
-            gc.a = 0.30f; // visible while drawing; matrix-driven after fix
+            gc.a = 0.55f; // visible while drawing; matrix-driven after fix
             glow.startColor = gc;
             glow.endColor = gc;
 
@@ -87,7 +88,7 @@ namespace Darkroom
             eo.OnAlphaApplied = a =>
             {
                 var g = glow.startColor;
-                g.a = a * 0.30f;
+                g.a = a * 0.55f;
                 glow.startColor = g;
                 glow.endColor = g;
                 light.intensity = a * 0.6f;
@@ -119,12 +120,39 @@ namespace Darkroom
             _light.transform.position = b.center;
             _light.pointLightOuterRadius = Mathf.Max(2.6f, b.extents.magnitude + 1.2f);
             _eo.enabled = true;           // registers + applies the matrix now
-            // the fixed stroke now counts as delivered light: sensors/umbra read
-            // it through the LightField, distance measured along the whole line.
-            if (LightField.Instance != null)
+            // only a BRIGHT stroke counts as delivered light (sensors/umbra read
+            // it through the LightField, distance measured along the whole line).
+            // A dark stroke is shadow, not light — it must never clear a shade
+            // wall, so it never registers as an emitter.
+            if (LightField.Instance != null && _eo.type == ExposureObjectType.BrightStroke)
                 LightField.Instance.Register(_light.transform, _light.pointLightOuterRadius,
                     () => _light.intensity, DistanceToPoint);
+
+            // juice: the stroke flares into being — endpoints spark, the glow
+            // swells then settles, and a bright "set" blip sounds (distinct from
+            // the shutter click), so creating terrain is its own rewarded moment.
+            var sparkC = Color.Lerp(VisualFactory.ColorFor(_eo.type), Color.white, 0.45f);
+            StrokeSparkle.Burst(_pts[0], sparkC, 5);
+            StrokeSparkle.Burst(_pts[_pts.Count - 1], sparkC, 5);
+            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayFixStroke();
+            StartCoroutine(FixFlash());
             return true;
+        }
+
+        // glow swell → settle, ~0.28 s; scales the glow line's width only (the
+        // matrix owns alpha, so this never fights an exposure change).
+        IEnumerator FixFlash()
+        {
+            const float baseW = Width * 5f;
+            float t = 0f; const float dur = 0.28f;
+            while (t < dur)
+            {
+                t += Time.deltaTime;
+                float k = 1f - Mathf.Clamp01(t / dur);
+                if (_glow != null) _glow.widthMultiplier = baseW * (1f + 0.9f * k);
+                yield return null;
+            }
+            if (_glow != null) _glow.widthMultiplier = baseW;
         }
 
         public Bounds ComputeBounds()

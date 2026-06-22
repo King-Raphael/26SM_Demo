@@ -7,6 +7,9 @@ namespace Darkroom
     public class SensorDoor : MonoBehaviour
     {
         public bool IsOpen { get; private set; }
+        /// Fired the instant the door opens (recolour the status lamp, spark, etc.),
+        /// before the child sprites fade out.
+        public System.Action OnOpen;
 
         Collider2D _col;
 
@@ -19,6 +22,7 @@ namespace Darkroom
         {
             if (IsOpen) return;
             IsOpen = true;
+            OnOpen?.Invoke();
             _col.enabled = false;
             foreach (var sr in GetComponentsInChildren<SpriteRenderer>())
             {

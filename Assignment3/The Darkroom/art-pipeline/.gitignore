@@ -1,0 +1,6 @@
+# Heavy working files — regenerate from the scripts + SOURCES.md. The shipped
+# outputs live in ../Assets/StreamingAssets/art/ and are tracked there.
+_src/
+_out/
+_preview_*.png
+_contact.png

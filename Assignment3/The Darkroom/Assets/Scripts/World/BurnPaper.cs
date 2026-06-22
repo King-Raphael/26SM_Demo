@@ -14,6 +14,10 @@ namespace Darkroom
         public float range = 2.6f;
         public Vector2 boxSize;
 
+        /// Char/heat progress 0..1 (drives the growing scar hole). Burned: fired once.
+        public System.Action<float> OnCharProgress;
+        public System.Action OnBurned;
+
         Collider2D _col;
         SpriteRenderer _sr;
         SpriteRenderer _ember;
@@ -52,6 +56,9 @@ namespace Darkroom
             // heats while held in OVER nearby; cools faster than it heats
             _t = Mathf.Clamp(_t + (firing ? Time.deltaTime : -Time.deltaTime * 1.5f), 0f, burnSeconds);
             float k = _t / burnSeconds;
+            OnCharProgress?.Invoke(k);
+            // a sizzle that swells with the heat (shared bed: loudest paper wins)
+            if (AudioDirector.Instance != null) AudioDirector.Instance.RequestBurn(k);
 
             // the paper browns and glows; the ember swells and flickers harder
             if (_sr != null)
@@ -74,6 +81,8 @@ namespace Darkroom
             if (_sr != null) _sr.color = new Color(0.10f, 0.09f, 0.10f, 0.30f); // the scar
             if (_ember != null) _ember.enabled = false;
             StrokeSparkle.Burst(transform.position, new Color(1f, 0.6f, 0.25f, 1f), 16);
+            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayBurnThrough();
+            OnBurned?.Invoke();
         }
     }
 }

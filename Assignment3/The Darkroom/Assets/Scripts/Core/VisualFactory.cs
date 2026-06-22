@@ -20,7 +20,7 @@ namespace Darkroom
                     var px = new Color32[16];
                     for (int i = 0; i < 16; i++) px[i] = new Color32(255, 255, 255, 255);
                     tex.SetPixels32(px);
-                    tex.filterMode = FilterMode.Point;
+                    tex.filterMode = FilterMode.Bilinear;
                     tex.Apply();
                     _white = Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 4f);
                     _white.name = "DarkroomWhite";
@@ -59,6 +59,24 @@ namespace Darkroom
                     _glowMat = new Material(sh) { name = "DarkroomSpriteGlow" };
                 }
                 return _glowMat;
+            }
+        }
+
+        static Material _beamMat;
+
+        /// Unlit glow material carrying a feathered cross-section texture, for soft
+        /// light beams on LineRenderers (drawn strokes, the level's dark trail).
+        public static Material BeamMat
+        {
+            get
+            {
+                if (_beamMat == null)
+                {
+                    var sh = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default");
+                    if (sh == null) sh = Shader.Find("Sprites/Default");
+                    _beamMat = new Material(sh) { name = "DarkroomBeam", mainTexture = ProcGfx.SoftBeamTex };
+                }
+                return _beamMat;
             }
         }
 

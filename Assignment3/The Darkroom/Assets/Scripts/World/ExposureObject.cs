@@ -90,6 +90,7 @@ namespace Darkroom
 
         void OnDisable()
         {
+            SetPreviewGhost(false);
             var mgr = ExposureManager.Instance;
             if (mgr != null)
             {
@@ -131,6 +132,7 @@ namespace Darkroom
 
         void HandleChanged(Exposure e)
         {
+            SetPreviewGhost(false); // any real switch ends a peek
             bool solid = IsSolid(type, e);
             if (_col != null) _col.enabled = solid;
             float dur = (_prevSolid && !solid) ? GhostFadeTime : FadeTime;
@@ -174,6 +176,74 @@ namespace Darkroom
         {
             var mgr = ExposureManager.Instance;
             ApplyImmediate(mgr != null ? mgr.Current : Exposure.Normal);
+        }
+
+        // ---------- hold-to-preview ghost ----------
+
+        GameObject _previewGhost;
+
+        /// Show/hide a soft cyan ghost at this object's footprint while the player
+        /// holds a switch key — telegraphs WHERE matter would develop (not whether
+        /// it's safe; the jam is never previewed). Independent renderer, so it
+        /// shows even when the object is currently invisible.
+        public void SetPreviewGhost(bool show)
+        {
+            if (show)
+            {
+                if (_previewGhost != null || !isActiveAndEnabled) return;
+                Bounds b = GetWorldBounds();
+                _previewGhost = new GameObject("PreviewGhost");
+                _previewGhost.transform.SetParent(transform, false);
+                _previewGhost.transform.position = b.center;
+                _previewGhost.transform.localScale =
+                    new Vector3(Mathf.Max(0.2f, b.size.x), Mathf.Max(0.2f, b.size.y), 1f);
+                var sr = _previewGhost.AddComponent<SpriteRenderer>();
+                sr.sprite = VisualFactory.WhiteSprite;
+                sr.sharedMaterial = VisualFactory.GlowMat;
+                sr.sortingOrder = VisualFactory.OrderStroke + 1;
+                sr.color = new Color(0.62f, 0.86f, 1f, 0.26f); // soft cyan peek
+            }
+            else if (_previewGhost != null)
+            {
+                Destroy(_previewGhost);
+                _previewGhost = null;
+            }
+        }
+
+        /// A refused (jammed) switch flashes this object amber at its footprint —
+        /// the cause of the refusal, "this would develop where you stand". Drawn
+        /// on an independent transient renderer so it shows even when the object
+        /// is currently invisible (e.g. a DarkPath gone in NORMAL).
+        public void FlashJam()
+        {
+            if (!isActiveAndEnabled) return;
+            StartCoroutine(JamFlashRoutine());
+        }
+
+        IEnumerator JamFlashRoutine()
+        {
+            Bounds b = GetWorldBounds();
+            var size = new Vector3(Mathf.Max(0.3f, b.size.x), Mathf.Max(0.3f, b.size.y), 1f);
+            var go = new GameObject("JamFlash");
+            go.transform.position = b.center;
+            go.transform.localScale = size;
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = VisualFactory.WhiteSprite;
+            sr.sharedMaterial = VisualFactory.GlowMat; // additive glow, ignores lighting
+            sr.sortingOrder = VisualFactory.OrderStroke + 2;
+            var amber = new Color(1f, 0.62f, 0.16f, 0f);
+            sr.color = amber;
+
+            float t = 0f; const float dur = 0.5f;
+            while (t < dur)
+            {
+                t += Time.deltaTime;
+                // one soft swell 0 → ~0.6 → 0
+                amber.a = Mathf.Sin(Mathf.Clamp01(t / dur) * Mathf.PI) * 0.6f;
+                sr.color = amber;
+                yield return null;
+            }
+            Destroy(go);
         }
     }
 }

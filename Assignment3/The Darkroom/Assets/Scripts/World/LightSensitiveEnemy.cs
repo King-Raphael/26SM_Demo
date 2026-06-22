@@ -22,6 +22,7 @@ namespace Darkroom
         Transform _visual;
         Light2D _light;
         Coroutine _crackle;
+        bool _stateInitialized;   // mute the first (spawn) state application's audio
 
         // asleep glint: a sliver of white light under the closed lids while
         // the player stands on the statue — it bears your weight, and watches
@@ -117,6 +118,21 @@ namespace Darkroom
             // statue "crackle" on freeze (spec stretch #4)
             if (wasAwake && !_isAwake && gameObject.activeInHierarchy)
                 _crackle = StartCoroutine(Crackle());
+
+            // audio: a menacing wake / a brittle freeze — but never on the first
+            // (spawn) application, never the freeze during a respawn reset (it
+            // would stack on the death sound), and only for the on-screen guard
+            // so a global OVER switch doesn't make every enemy in the level sound.
+            var ad = AudioDirector.Instance;
+            var gm = GameManager.Instance;
+            bool nearPlayer = gm != null && gm.Player != null
+                && Mathf.Abs(gm.Player.transform.position.x - transform.position.x) < 14f;
+            if (_stateInitialized && ad != null && nearPlayer)
+            {
+                if (!wasAwake && _isAwake) ad.PlayEnemyWake();
+                else if (wasAwake && !_isAwake && !gm.IsRespawning) ad.PlayEnemyFreeze();
+            }
+            _stateInitialized = true;
         }
 
         IEnumerator Crackle()

@@ -20,11 +20,16 @@ namespace Darkroom
             if (GameManager.Instance != null)
                 GameManager.Instance.SetCheckpoint(transform.position, Caption);
             if (_marker != null)
+            {
                 _marker.color = Color.white; // developed: the photo brightens
-            // the developing photo IS the photograph: snap this room's frame
-            if (PhotoAlbum.Instance != null)
-                PhotoAlbum.Instance.CaptureRoom(
-                    RoomIndex >= 0 ? RoomIndex : LevelData.RoomIndexAt(transform.position.x));
+                StrokeSparkle.Burst(_marker.transform.position, new Color(0.92f, 0.92f, 0.86f, 1f), 8);
+            }
+            // the developing photo IS the photograph: snap this room's frame.
+            // Room 0 (the prologue) is the BLANK unprinted frame — it is never
+            // photographed here; the finale prints the self-portrait into slot 0.
+            int room = RoomIndex >= 0 ? RoomIndex : LevelData.RoomIndexAt(transform.position.x);
+            if (room != 0 && PhotoAlbum.Instance != null)
+                PhotoAlbum.Instance.CaptureRoom(room);
         }
     }
 }

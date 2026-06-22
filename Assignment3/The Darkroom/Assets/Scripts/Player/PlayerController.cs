@@ -9,6 +9,10 @@ namespace Darkroom
     {
         public const float MoveSpeed = 7f;
         public const float JumpForce = 12.5f;
+        // Ground speed RAMP — starts/stops carry a little weight instead of
+        // snapping. Air control stays near-instant (jump-to-ledge precision).
+        public const float GroundAccel = 110f;  // u/s^2 — ~0.064s to full speed
+        public const float GroundDecel = 130f;  // u/s^2 — ~0.054s to a stop; keep short or edge-landings get mushy
         public const float CoyoteTime = 0.10f;
         public const float JumpBufferTime = 0.10f;
         public const float HalfHeight = 0.65f;   // box is 0.7 x 1.3
@@ -19,6 +23,7 @@ namespace Darkroom
         public BoxCollider2D Box { get; private set; }
 
         float _coyote, _jumpBuffer, _moveX;
+        bool _jumpHeld, _jumpCut;
         readonly Collider2D[] _groundHits = new Collider2D[8];
         int _groundHitCount;
         ContactFilter2D _groundFilter;
@@ -69,8 +74,9 @@ namespace Darkroom
         void Update()
         {
             if (PauseController.IsPaused) return;
-            if (!InputEnabled) { _moveX = 0f; _jumpBuffer = 0f; return; }
+            if (!InputEnabled) { _moveX = 0f; _jumpBuffer = 0f; _jumpHeld = false; return; }
             _moveX = DarkroomInput.MoveAxis;
+            _jumpHeld = DarkroomInput.JumpHeld;
             if (DarkroomInput.JumpPressed) _jumpBuffer = JumpBufferTime;
             else _jumpBuffer -= Time.deltaTime;
         }
@@ -78,7 +84,7 @@ namespace Darkroom
         void FixedUpdate()
         {
             GroundCheck();
-            if (IsGrounded) _coyote = CoyoteTime;
+            if (IsGrounded) { _coyote = CoyoteTime; _jumpCut = false; }
             else _coyote -= Time.fixedDeltaTime;
 
             bool jumping = _jumpBuffer > 0f && (IsGrounded || _coyote > 0f);
@@ -90,12 +96,18 @@ namespace Darkroom
                 // horizontal and y stays 0 (identical to before), on a slope it
                 // carries you up/down so inclines are walkable, and zero input
                 // means zero velocity so the frictionless body never slides.
+                // ...and RAMP toward the target speed along that tangent. Zero
+                // input -> target 0 -> the frictionless body still parks (the
+                // MoveTowards lands exactly on 0, so no slope creep).
                 Vector2 tangent = new Vector2(_groundNormal.y, -_groundNormal.x);
-                v = tangent * (_moveX * MoveSpeed);
+                float target = _moveX * MoveSpeed;
+                float cur = Vector2.Dot(v, tangent);
+                float rate = Mathf.Abs(target) > 0.01f ? GroundAccel : GroundDecel;
+                v = tangent * Mathf.MoveTowards(cur, target, rate * Time.fixedDeltaTime);
             }
             else
             {
-                v.x = _moveX * MoveSpeed;
+                v.x = _moveX * MoveSpeed;   // air control stays near-instant
             }
 
             if (jumping)
@@ -104,6 +116,15 @@ namespace Darkroom
                 _jumpBuffer = 0f;
                 _coyote = 0f;
                 IsGrounded = false;
+                _jumpCut = false;
+            }
+            // Variable jump: release Space while still climbing -> cut it short
+            // (tap = hop, hold = full). Max JumpForce is untouched, so every
+            // authored gap still clears at a full hold; only early release shortens.
+            if (!IsGrounded && !_jumpHeld && !_jumpCut && v.y > 3f)
+            {
+                v.y *= 0.5f;
+                _jumpCut = true;
             }
             Body.linearVelocity = v;
         }
@@ -143,6 +164,7 @@ namespace Darkroom
             Body.linearVelocity = Vector2.zero;
             _coyote = 0f;
             _jumpBuffer = 0f;
+            _jumpCut = false;
         }
     }
 }

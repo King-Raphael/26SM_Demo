@@ -12,7 +12,7 @@ namespace Darkroom
         {
             int h = rows.Length, w = rows[0].Length;
             var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
-            tex.filterMode = FilterMode.Point;
+            tex.filterMode = FilterMode.Bilinear;
             var px = new Color32[w * h];
             for (int y = 0; y < h; y++)
                 for (int x = 0; x < w; x++)
@@ -30,7 +30,7 @@ namespace Darkroom
         static Sprite MakeTile(string name, int size, float ppu, System.Func<int, int, Color32> pixel)
         {
             var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-            tex.filterMode = FilterMode.Point;
+            tex.filterMode = FilterMode.Bilinear;
             tex.wrapMode = TextureWrapMode.Repeat;
             var px = new Color32[size * size];
             for (int y = 0; y < size; y++)
@@ -48,7 +48,7 @@ namespace Darkroom
 
         // ---------- noise ----------
 
-        static float Hash(int x, int y, int s)
+        internal static float Hash(int x, int y, int s)
         {
             unchecked
             {
@@ -58,7 +58,7 @@ namespace Darkroom
             }
         }
 
-        static float ValueNoise(float x, float y, int seed)
+        internal static float ValueNoise(float x, float y, int seed)
         {
             int x0 = Mathf.FloorToInt(x), y0 = Mathf.FloorToInt(y);
             float fx = x - x0, fy = y - y0;
@@ -70,11 +70,17 @@ namespace Darkroom
         // ---------- world tiles ----------
 
         static Sprite _ground, _darkPath, _barrier, _door;
-        static Sprite _concrete, _brick, _lightCone, _coneShade;
+        static Sprite _concrete, _wall, _lightCone, _coneShade;
 
-        /// Photo texture from StreamingAssets (CC0, see README credits).
+        /// Photo/illustration texture from StreamingAssets (CC0/authored, see README credits).
         /// Returns null when the file is missing — callers fall back to procedural.
-        static Sprite LoadExternal(string file, float ppu)
+        static Sprite LoadExternal(string file, float ppu) => LoadExternal(file, ppu, new Vector2(0.5f, 0.5f));
+
+        /// Public single-art loader for one-off props (e.g. the prologue safelight
+        /// fixture). StreamingAssets-relative path; null if absent (caller falls back).
+        public static Sprite Art(string file, float ppu) => LoadExternal(file, ppu);
+
+        static Sprite LoadExternal(string file, float ppu, Vector2 pivot)
         {
             try
             {
@@ -82,23 +88,31 @@ namespace Darkroom
                 if (!System.IO.File.Exists(p)) return null;
                 var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
                 if (!tex.LoadImage(System.IO.File.ReadAllBytes(p))) return null;
-                tex.wrapMode = TextureWrapMode.Repeat;
+                tex.wrapMode = TextureWrapMode.Repeat; // tiled walls need it; moot for feathered scenes/cutouts
                 tex.filterMode = FilterMode.Bilinear;
                 var s = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height),
-                    new Vector2(0.5f, 0.5f), ppu, 0, SpriteMeshType.FullRect);
+                    pivot, ppu, 0, SpriteMeshType.FullRect);
                 s.name = file;
                 return s;
             }
             catch { return null; }
         }
 
-        /// Concrete: external photo texture (tinted dark by the builder),
-        /// procedural noise fallback. 512 ppu => one 1K tile spans 2 units.
+        /// Try each StreamingAssets-relative file in order; first that loads wins.
+        /// Lets authored/AI art (art/…) override the legacy photo, which overrides procedural.
+        static Sprite LoadExternalFirst(float ppu, params string[] files)
+        {
+            foreach (var f in files) { var s = LoadExternal(f, ppu); if (s != null) return s; }
+            return null;
+        }
+
+        /// Concrete: cool dark authored wall (art/wall_concrete.png), legacy photo,
+        /// then procedural noise. 512 ppu => one 1K tile spans 2 units.
         public static Sprite ConcreteTile
         {
             get
             {
-                if (_concrete == null) _concrete = LoadExternal("concrete.jpg", 512f);
+                if (_concrete == null) _concrete = LoadExternalFirst(512f, "art/wall_concrete.png", "concrete.jpg");
                 if (_concrete == null)
                     _concrete = MakeTile("ConcreteTile", 64, 64f, (x, y) =>
                     {
@@ -112,25 +126,83 @@ namespace Darkroom
             }
         }
 
-        /// Brick: external photo texture (tinted dark), procedural fallback.
-        public static Sprite BrickTile
+        /// Wall: cool dark plaster (art/wall_plaster.png). Replaces the old red-brick
+        /// photo, which clashed with the monochrome darkroom palette. Legacy photo +
+        /// neutral-grey procedural fallback kept so the game always renders.
+        public static Sprite WallTile
         {
             get
             {
-                if (_brick == null) _brick = LoadExternal("bricks.jpg", 512f);
-                if (_brick == null)
-                    _brick = MakeTile("BrickTile", 64, 64f, (x, y) =>
+                if (_wall == null) _wall = LoadExternalFirst(512f, "art/wall_plaster.png", "bricks.jpg");
+                if (_wall == null)
+                    _wall = MakeTile("WallTile", 64, 64f, (x, y) =>
                     {
+                        // neutral-grey ashlar fallback (no red): subtle blocks + speckle
                         int row = y / 16;
                         int xo = (row % 2) * 16;
                         bool mortar = (y % 16) < 2 || ((x + xo) % 32) < 2;
-                        if (mortar) return new Color32(0x20, 0x20, 0x24, 255);
+                        if (mortar) return new Color32(0x18, 0x18, 0x1C, 255);
                         float n = ValueNoise(x / 5f, y / 5f, 51);
-                        byte g = (byte)((0.32f + n * 0.10f) * 255f);
+                        byte g = (byte)((0.22f + n * 0.08f) * 255f);
                         return new Color32(g, g, (byte)Mathf.Min(255, g + 6), 255);
                     });
-                return _brick;
+                return _wall;
             }
+        }
+
+        /// Authored/AI illustrated backdrop scenes — every `art/bd_*.png` in
+        /// StreamingAssets, loaded at `ppu` (cached). Empty list when none exist, so
+        /// the backdrop builder degrades gracefully. Drop a new bd_*.png in and it
+        /// is picked up automatically on the next level build — no code change.
+        static List<Sprite> _scenes;
+        public static List<Sprite> BackdropScenes(float ppu)
+        {
+            if (_scenes != null) return _scenes;
+            _scenes = new List<Sprite>();
+            try
+            {
+                string dir = System.IO.Path.Combine(Application.streamingAssetsPath, "art");
+                if (System.IO.Directory.Exists(dir))
+                {
+                    var files = System.IO.Directory.GetFiles(dir, "bd_*.png");
+                    System.Array.Sort(files); // deterministic order
+                    foreach (var f in files)
+                    {
+                        var s = LoadExternal("art/" + System.IO.Path.GetFileName(f), ppu);
+                        if (s != null) _scenes.Add(s);
+                    }
+                }
+            }
+            catch { /* StreamingAssets not a real dir on some platforms — fall back to none */ }
+            return _scenes;
+        }
+
+        /// Illustrated mid-ground clutter cutouts — every `art/mid_*.png`, loaded at `ppu`
+        /// with a TOP-centre pivot so the builder can hang them from the ceiling band.
+        /// Transparent PNGs (chroma-keyed + darkened). Empty list when none exist, so the
+        /// builder falls back to its code-drawn silhouettes. Drop a new mid_*.png in and
+        /// it is picked up on the next level build — no code change.
+        static List<Sprite> _midClutter;
+        public static List<Sprite> MidgroundClutter(float ppu)
+        {
+            if (_midClutter != null) return _midClutter;
+            _midClutter = new List<Sprite>();
+            try
+            {
+                string dir = System.IO.Path.Combine(Application.streamingAssetsPath, "art");
+                if (System.IO.Directory.Exists(dir))
+                {
+                    var files = System.IO.Directory.GetFiles(dir, "mid_*.png");
+                    System.Array.Sort(files);
+                    foreach (var f in files)
+                    {
+                        var s = LoadExternal("art/" + System.IO.Path.GetFileName(f), ppu, new Vector2(0.5f, 1f));
+                        if (s != null) _midClutter.Add(s);
+                    }
+                }
+            }
+            catch { /* fall back to code silhouettes */ }
+            return _midClutter;
         }
 
         /// Soft lamp light cone (wide at the bottom, fading down).
@@ -166,6 +238,76 @@ namespace Darkroom
                     _lightCone.name = "LightCone";
                 }
                 return _lightCone;
+            }
+        }
+
+        static Sprite _lightBeam;
+        /// A single natural volumetric beam: HOT at the source (top), a brighter
+        /// inner core, gaussian-feathered (soft, not a hard cone), gently widening,
+        /// fading smoothly to nothing along its length. Pivot top-centre so it
+        /// emanates from the bulb. Replaces the old hard double-cone.
+        public static Sprite LightBeam
+        {
+            get
+            {
+                if (_lightBeam == null)
+                {
+                    int w = 128, h = 200;
+                    var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+                    tex.filterMode = FilterMode.Bilinear;
+                    var px = new Color32[w * h];
+                    for (int y = 0; y < h; y++)
+                        for (int x = 0; x < w; x++)
+                        {
+                            float ty = (h - 1 - y) / (float)(h - 1);              // 0 source (top) -> 1 far end
+                            float halfW = Mathf.Lerp(0.07f, 0.40f, Mathf.Pow(ty, 0.8f)) * w;
+                            float dx = Mathf.Abs(x - w / 2f) / halfW;
+                            float soft = Mathf.Exp(-dx * dx * 2.1f);              // feathered body (no hard edge)
+                            float core = Mathf.Exp(-dx * dx * 8.5f);              // tighter bright core streak
+                            float vert = Mathf.Pow(1f - ty, 1.6f);               // fade down the length
+                            float hot = Mathf.Exp(-ty * ty * 24f);               // bright hot-spot at the source
+                            float a = (soft * 0.5f + core * 0.5f) * vert + hot * soft * 0.55f;
+                            px[y * w + x] = new Color32(255, 244, 222, (byte)(Mathf.Clamp01(a) * 0.62f * 255f));
+                        }
+                    tex.SetPixels32(px);
+                    tex.Apply();
+                    _lightBeam = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 1f), 44f, 0, SpriteMeshType.FullRect);
+                    _lightBeam.name = "LightBeam";
+                }
+                return _lightBeam;
+            }
+        }
+
+        static Sprite _edgeFade;
+        /// Vertical gradient: opaque at the TOP, fading to transparent downward — a soft
+        /// catch-light rim that bleeds a platform's lit lip down its face (a 3D-ledge cue).
+        /// Pivot top-centre so it grows downward from the lip.
+        public static Sprite EdgeFade
+        {
+            get
+            {
+                if (_edgeFade == null)
+                {
+                    // square + ppu==h so native size is exactly 1x1 world units (like
+                    // WhiteSprite): a localScale of (s.x, rimH) then gives the right size.
+                    // (An 8-wide texture at ppu 64 was only 0.125u native -> a thin streak.)
+                    int w = 64, h = 64;
+                    var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+                    tex.filterMode = FilterMode.Bilinear;
+                    var px = new Color32[w * h];
+                    for (int y = 0; y < h; y++)
+                        for (int x = 0; x < w; x++)
+                        {
+                            float ty = (h - 1 - y) / (float)(h - 1);   // 0 top -> 1 bottom
+                            float a = Mathf.Pow(1f - ty, 2.2f);
+                            px[y * w + x] = new Color32(255, 255, 255, (byte)(a * 255f));
+                        }
+                    tex.SetPixels32(px);
+                    tex.Apply();
+                    _edgeFade = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 1f), h, 0, SpriteMeshType.FullRect);
+                    _edgeFade.name = "EdgeFade";
+                }
+                return _edgeFade;
             }
         }
 
@@ -272,10 +414,10 @@ namespace Darkroom
             get
             {
                 if (_door == null)
-                    _door = MakeTile("DoorTile", 12, 12f, (x, y) =>
+                    _door = MakeTile("DoorTile", 48, 48f, (x, y) =>
                     {
-                        if (y % 4 == 0) return C(0x4F4F4F);
-                        if (x == 0) return C(0x575757);
+                        if (y % 16 < 2) return C(0x4F4F4F);   // recessed slat shadow
+                        if (x < 2) return C(0x575757);        // side bevel
                         return C(0x5E5E5E);
                     });
                 return _door;
