@@ -11,15 +11,174 @@ namespace Darkroom
     /// the darkroom now.
     public static class BackdropBuilder
     {
+        // procedural god-ray shader for the lamps (cached; null-graceful -> flat beam fallback)
+        static Shader _shaftShader;
+        static Shader ShaftShader => _shaftShader != null ? _shaftShader : (_shaftShader = Shader.Find("Darkroom/LightShaft"));
+
         public static void Build()
         {
             if (GameObject.Find("_Backdrop") != null) return;
             var root = new GameObject("_Backdrop").transform;
             BuildScenes(root);
+            BuildNear(root);        // a closer illustrated band between the far scenes and the
+                                    // clutter — a second parallax speed for layered depth
             BuildMidground(root);   // hanging darkroom clutter — mid-depth, in front of the
                                     // photos, behind the lamps (whose beams glow over it)
+            BackdropFigures.Build(root); // sparse animated silhouette figures, deep in parallax
             BuildLamps(root);
+            BuildForeground(root);  // out-of-focus near-black framing IN FRONT of the play space
             root.gameObject.AddComponent<BackdropTint>(); // background colour per exposure
+        }
+
+        /// Backdrop-NEAR band: a second illustrated layer that scrolls a touch faster than
+        /// the far scenes (0.30 vs 0.15) so the two read as different distances — the core
+        /// of the parallax "3D" feel. Uses art/bn_*.png when present; otherwise re-uses the
+        /// far hero scenes, smaller + denser, as a nearer wall. Named "Layer_*" so
+        /// BackdropTint colours it per exposure with the rest of the backdrop.
+        static void BuildNear(Transform root)
+        {
+            // prefer dedicated near art; fall back to the far scenes (slightly higher ppu so
+            // they read smaller/closer) so the band still exists with the shipped assets.
+            var near = PixelArt.BackdropNear(116f);
+            bool reuse = near.Count == 0;
+            if (reuse) near = PixelArt.BackdropScenes(116f);
+            if (near.Count == 0) return; // nothing authored at all — graceful
+
+            var layerGO = new GameObject("Layer_Near");
+            layerGO.transform.SetParent(root, false);
+            layerGO.AddComponent<ParallaxLayer>().Factor = 0.30f; // closer than the 0.15 far scenes
+            var rng = new System.Random(202);
+
+            int si = rng.Next(near.Count);
+            float x = 0f;
+            while (x < 156f)
+            {
+                var sprite = near[si % near.Count]; si++;
+                float scale = (reuse ? 0.62f : 0.95f) + (float)rng.NextDouble() * 0.30f;
+                var go = new GameObject("NearScene");
+                go.transform.SetParent(layerGO.transform, false);
+                go.transform.localPosition = new Vector3(x, 3.4f + (float)rng.NextDouble() * 2.4f, 0f);
+                go.transform.localScale = new Vector3(scale, scale, 1f);
+                var sr = go.AddComponent<SpriteRenderer>();
+                sr.sprite = sprite;
+                sr.sharedMaterial = VisualFactory.GlowMat; // unlit; BackdropTint recolours per exposure
+                sr.color = new Color(0.92f, 0.94f, 1.0f, 0.80f); // a touch dimmer/cooler than the far wall
+                sr.sortingOrder = VisualFactory.OrderNear;        // -14: behind midground (-10), front of far (-22)
+                x += 16f + (float)rng.NextDouble() * 12f;
+            }
+        }
+
+        /// Out-of-focus FOREGROUND: near-black framing IN FRONT of the play space (sort 60 >
+        /// OrderPlayer) that scrolls FASTER than the camera (parallax 1.25) — the strongest
+        /// depth cue. Deliberately sparse + edge-biased so it frames without ever hiding
+        /// footing (the Closure/Contrast rule). Uses art/fg_*.png when present, else thin
+        /// code silhouettes (drooping cables, an enlarger arm, a blurred print edge). NOT a
+        /// "Layer_*" (stays constant near-black); BackdropTint fades it out in OVER.
+        static void BuildForeground(Transform root)
+        {
+            var layer = new GameObject("Foreground");
+            layer.transform.SetParent(root, false);
+            var pl = layer.AddComponent<ParallaxLayer>();
+            pl.Factor = 1.25f;            // moves faster than the camera -> reads as very close
+            pl.VerticalFollow = 0.92f;    // track the camera so the frame stays composed
+            pl.VerticalOffset = 0f;
+            var rng = new System.Random(404);
+
+            var cutouts = PixelArt.ForegroundCutouts(160f);
+
+            // sparse: ~one element every 13-19 units, biased to the top/edges of the frame.
+            float x = 2f;
+            while (x < 174f)
+            {
+                if (cutouts.Count > 0 && rng.NextDouble() < 0.5)
+                    ForegroundArt(layer.transform, x, cutouts, rng);
+                else
+                    ForegroundCode(layer.transform, x, rng);
+                x += 13f + (float)rng.NextDouble() * 6f;
+            }
+        }
+
+        /// One illustrated foreground cutout, large + near-black, biased high so it drapes
+        /// in from the top edge rather than covering the play plane.
+        static void ForegroundArt(Transform layer, float x,
+            System.Collections.Generic.List<Sprite> cutouts, System.Random rng)
+        {
+            var sprite = cutouts[rng.Next(cutouts.Count)];
+            float targetH = 4.5f + (float)rng.NextDouble() * 2.5f;
+            float nativeH = sprite.bounds.size.y;
+            float scale = nativeH > 0.01f ? targetH / nativeH : 1f;
+            var go = new GameObject("FgArt");
+            go.transform.SetParent(layer, false);
+            go.transform.localPosition = new Vector3(x, 3.0f + (float)rng.NextDouble() * 2.0f, 0f);
+            go.transform.localScale = new Vector3(scale, scale, 1f);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = sprite;
+            sr.sharedMaterial = VisualFactory.GlowMat;
+            sr.color = new Color(0.05f, 0.05f, 0.06f, 0.92f); // near-black, slightly translucent (out of focus)
+            sr.sortingOrder = VisualFactory.OrderForeground;
+        }
+
+        // near-black, faintly translucent so the foreground reads as out-of-focus framing.
+        static readonly Color FgDark = new Color(0.04f, 0.04f, 0.05f, 0.88f);
+
+        /// One code-drawn foreground silhouette: a drooping cable arc, an enlarger arm
+        /// jutting from a top corner, or a blurred print edge. Thin/edge-only so footing
+        /// is never obscured.
+        static void ForegroundCode(Transform layer, float x, System.Random rng)
+        {
+            var cluster = new GameObject("FgPiece");
+            cluster.transform.SetParent(layer, false);
+            cluster.transform.localPosition = new Vector3(x, 0f, 0f);
+            double r = rng.NextDouble();
+            if (r < 0.5)
+            {
+                // drooping cable: a shallow catenary high in the frame
+                float span = 3.0f + (float)rng.NextDouble() * 2.5f;
+                float topY = 3.6f + (float)rng.NextDouble() * 1.2f;
+                float sag = 0.7f + (float)rng.NextDouble() * 0.8f;
+                const int segs = 5;
+                Vector2 prev = new Vector2(-span / 2f, topY);
+                for (int i = 1; i <= segs; i++)
+                {
+                    float t = i / (float)segs;
+                    float cx = -span / 2f + t * span;
+                    float cy = topY - sag * (1f - Mathf.Pow(2f * t - 1f, 2f));
+                    Vector2 cur = new Vector2(cx, cy);
+                    FgSeg(cluster.transform, prev, cur, 0.07f);
+                    prev = cur;
+                }
+            }
+            else if (r < 0.8)
+            {
+                // enlarger arm: a vertical column from the top edge + a horizontal arm
+                float colY = 4.6f;
+                FgPart(cluster.transform, new Vector3(0f, colY, 0f), new Vector3(0.22f, 3.2f, 1f));
+                FgPart(cluster.transform, new Vector3(0.7f, colY - 1.4f, 0f), new Vector3(1.5f, 0.20f, 1f));
+                FgPart(cluster.transform, new Vector3(1.4f, colY - 1.9f, 0f), new Vector3(0.5f, 0.7f, 1f)); // lamp head
+            }
+            else
+            {
+                // a blurred print edge drifting in from the top
+                float h = 2.2f + (float)rng.NextDouble() * 1.2f;
+                FgPart(cluster.transform, new Vector3(0f, 4.4f, 0f), new Vector3(1.6f, h, 1f));
+            }
+        }
+
+        static void FgPart(Transform parent, Vector3 localPos, Vector3 scale)
+        {
+            // Part() swaps to GlowMat (constant value; the Foreground root has no "Layer_"
+            // prefix so BackdropTint only fades it in Over, never tints it).
+            Part(parent, localPos, scale, VisualFactory.WhiteSprite, FgDark, VisualFactory.OrderForeground);
+        }
+
+        static void FgSeg(Transform parent, Vector2 a, Vector2 b, float thick)
+        {
+            Vector2 mid = (a + b) * 0.5f;
+            float len = (b - a).magnitude;
+            float ang = Mathf.Atan2(b.y - a.y, b.x - a.x) * Mathf.Rad2Deg;
+            var sr = Part(parent, new Vector3(mid.x, mid.y, 0f), new Vector3(len, thick, 1f),
+                VisualFactory.WhiteSprite, FgDark, VisualFactory.OrderForeground);
+            sr.transform.localRotation = Quaternion.Euler(0f, 0f, ang);
         }
 
         /// Illustrated darkroom vignettes on the furthest parallax layer. Each is a
@@ -95,6 +254,9 @@ namespace Darkroom
             Lamp(lamps, -33f, FloorTopAt(-33f) + 5.8f, rng);
             Lamp(lamps, -22f, FloorTopAt(-22f) + 5.4f, rng);
             Lamp(lamps, -9f,  FloorTopAt(-9f)  + 5.8f, rng);
+
+            // bound the 2D-shadow cost: only the nearest few lamps cast at any time
+            lamps.gameObject.AddComponent<LampShadowCuller>();
         }
 
         /// Approx top-Y of the walkable floor at world x, read from the level data, so
@@ -140,12 +302,33 @@ namespace Darkroom
                 new Vector3(1.05f, 1.05f, 1f), PixelArt.SoftGlow, new Color(1.7f, 1.5f, 1.12f, 0.95f), -5);
             srcGlow.sharedMaterial = VisualFactory.GlowMat;
 
-            // ONE soft volumetric beam (hot at the source, feathered, fading) — replaces
-            // the old hard double-cone that read as two disconnected shapes. It fades out
-            // well above the floor, so it never "reappears brighter" past a platform/box.
-            var beam = Decoration(go.transform, new Vector3(0f, -cord - 0.5f, 0f),
-                new Vector3(0.95f, 0.82f, 1f), PixelArt.LightBeam, Color.white, -5);
-            beam.sharedMaterial = VisualFactory.GlowMat;
+            // a volumetric GOD-RAY: a soft cone with FBM dust drifting/settling inside
+            // (Darkroom/LightShaft) — narrow + bright at the bulb, widening + fading toward
+            // the floor. Refined + alive like the fog; replaces the old flat beam sprite.
+            var shaftSh = ShaftShader;
+            if (shaftSh != null)
+            {
+                var shaft = new GameObject("Shaft");
+                shaft.transform.SetParent(go.transform, false);
+                shaft.transform.localPosition = new Vector3(0f, -cord - 0.5f - 2.8f, 0f); // top sits at the bulb
+                shaft.transform.localScale = new Vector3(2.6f, 5.6f, 1f);
+                var ssr = shaft.AddComponent<SpriteRenderer>();
+                ssr.sprite = VisualFactory.WhiteSprite;
+                ssr.sortingOrder = -5;
+                ssr.color = new Color(1f, 0.90f, 0.72f, 0.24f); // warm, faint; alpha = density (additive)
+                var sm = new Material(shaftSh);
+                sm.SetFloat("_Speed", 0.05f + (float)rng.NextDouble() * 0.03f);
+                sm.SetFloat("_Scale", 0.5f + (float)rng.NextDouble() * 0.25f);
+                sm.SetFloat("_Seed", (float)rng.NextDouble() * 20f);
+                ssr.sharedMaterial = sm;
+            }
+            else
+            {
+                // fallback: the old flat feathered beam sprite
+                var beam = Decoration(go.transform, new Vector3(0f, -cord - 0.5f, 0f),
+                    new Vector3(0.95f, 0.82f, 1f), PixelArt.LightBeam, Color.white, -5);
+                beam.sharedMaterial = VisualFactory.GlowMat;
+            }
 
             // dust adrift in the beam — the classic darkroom "light catching motes" cue.
             // Pooled, warm, slow; clearly atmosphere (never reads as interactable).
@@ -160,8 +343,10 @@ namespace Darkroom
             drift.color = new Color(1f, 0.93f, 0.78f, 0.5f);
             drift.sortingOrder = -4;
 
+            // the lamps are the ONLY lights that cast real shadows (opt-in); a culler keeps
+            // only the nearest few enabled so the per-light shadow pass stays cheap.
             LightDirector.CreatePoint(go.transform, new Vector2(0f, -cord - 0.8f),
-                new Color(1f, 0.92f, 0.76f), 5.5f, 0.7f);
+                new Color(1f, 0.92f, 0.76f), 5.5f, 0.7f, castsShadows: true);
         }
 
         // ---------- mid-ground hanging clutter ----------

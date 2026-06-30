@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 
 namespace Darkroom
 {
@@ -24,13 +25,16 @@ namespace Darkroom
             IsOpen = true;
             OnOpen?.Invoke();
             _col.enabled = false;
+            // stop blocking the lamps once it slides open (the panel fades to alpha 0.15)
+            var sc = GetComponent<ShadowCaster2D>();
+            if (sc != null) sc.enabled = false;
             foreach (var sr in GetComponentsInChildren<SpriteRenderer>())
             {
                 var c = sr.color;
                 c.a = 0.15f;
                 sr.color = c;
             }
-            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayDoor();
+            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayDoor(transform.position.x);
         }
     }
 }

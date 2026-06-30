@@ -10,7 +10,7 @@ namespace Darkroom
     /// global Volume in code, turns the effects on, and lerps them per exposure:
     ///   Under  — deep cool vignette, low bloom, desaturated, pulled-down exposure
     ///   Normal — balanced filmic key (gentle contrast, faint warm filter)
-    ///   Over   — warm bloom-out, lifted exposure, almost no vignette
+    ///   Over   — FLASH: blown exposure, broad bloom, bleached, no vignette, a flash-punch on entry
     /// A scripted override (the finale warm flare) wins over the exposure grade, the same
     /// way LightDirector.SetOverride does for the global 2D light.
     public class PostFXDirector : MonoBehaviour
@@ -22,6 +22,8 @@ namespace Darkroom
         Vignette _vignette;
         ColorAdjustments _color;
         SplitToning _split;
+        ChromaticAberration _ca;
+        LensDistortion _lens;
 
         static readonly Color StNeutral = new Color(0.5f, 0.5f, 0.5f); // grey split-tone = no effect
 
@@ -43,15 +45,19 @@ namespace Darkroom
             vignetteColor = new Color(0.01f, 0.02f, 0.05f), filter = new Color(0.86f, 0.92f, 1.06f),
             stShadows = StNeutral, stHighlights = StNeutral, stBalance = 0f,
         };
-        // Over = graded OVEREXPOSURE, not a light flood: a darker base (low global
-        // light) + high contrast keeps shadows deep, the warmth lives in a split-tone
-        // (warm highlights / cool shadows) instead of a flat cream wash, and bloom
-        // halates only the genuinely bright surfaces. Full tonal range = layers.
+        // Over = a warm GOLDEN PRINT, not a white blow-out. Earlier passes pushed
+        // exposure + bloom so hard that mid-grey surfaces CLIPPED to flat white boxes and
+        // the lamps smeared — ugly, and the edges read worse, not better. The lesson: now
+        // that the BACKGROUND is amber (LightDirector void + BackdropTint), Over already
+        // reads as another world, so the foreground must NOT blow out — it should hold its
+        // tones in a rich, warm, sepia/golden grade (a developed print under the enlarger).
+        // Lifted a touch over Normal + warm filter + a warm vignette frame; bloom is gentle
+        // and high-threshold so only true lights (lamps, strokes) glow, nothing clips.
         static readonly Grade Over = new Grade
         {
-            bloom = 0.5f, bloomThreshold = 0.95f, vignette = 0.20f, saturation = -4f, contrast = 8f, postExposure = 0.10f,
-            vignetteColor = new Color(0.04f, 0.03f, 0.02f), filter = new Color(1.02f, 1.00f, 0.98f),
-            stShadows = new Color(0.47f, 0.49f, 0.55f), stHighlights = new Color(0.63f, 0.58f, 0.47f), stBalance = 0f,
+            bloom = 1.0f, bloomThreshold = 0.62f, vignette = 0.18f, saturation = -2f, contrast = 5f, postExposure = 0.42f,
+            vignetteColor = new Color(0.09f, 0.07f, 0.05f), filter = new Color(1.04f, 0.97f, 0.88f),
+            stShadows = new Color(0.48f, 0.50f, 0.54f), stHighlights = new Color(0.55f, 0.53f, 0.49f), stBalance = 0f,
         };
 
         Grade _target = Normal;
@@ -59,6 +65,17 @@ namespace Darkroom
         bool _override;
         Grade _overrideGrade;
         const float LerpSpeed = 4.5f;
+        bool _washed; float _wash;        // the fixer wash: COLOUR floods back at the end
+        const float WashSat = 32f;
+        float _flash;                     // shutter-flash punch fired on committing to Over
+        const float FlashDecay = 0.2f, FlashExposure = 0.6f, FlashBloom = 0.8f;
+        // exposure JOLT: a brief chromatic-aberration + lens-distortion pulse on EVERY
+        // non-silent switch (Over strongest, Under pinches). Separate from _flash (Over-only).
+        float _jolt; Exposure _joltMode = Exposure.Normal;
+        const float JoltDecay = 0.28f;
+        const float CAOver = 0.55f, CANormal = 0.30f, CAUnder = 0.22f;
+        // gentle lens warp — the strong pinch read as a camera "shake" on every switch
+        const float LensUnder = -0.08f, LensOver = 0.04f, LensNormal = 0f;
 
         void Awake()
         {
@@ -111,6 +128,13 @@ namespace Darkroom
             grain.type.value = FilmGrainLookup.Medium1;
             grain.intensity.value = 0.20f;
             grain.response.value = 0.8f;
+
+            // at rest these are invisible (intensity 0); only the exposure jolt drives them
+            _ca = profile.Add<ChromaticAberration>(true);
+            _ca.intensity.value = 0f;
+            _lens = profile.Add<LensDistortion>(true);
+            _lens.intensity.value = 0f;
+            _lens.scale.value = 1f;
         }
 
         void Start()
@@ -130,6 +154,19 @@ namespace Darkroom
             _target = e == Exposure.Underexposed ? Under
                     : e == Exposure.Overexposed ? Over
                     : Normal;
+            // the shutter FIRES: a bright bloom punch when you commit to Over — but not
+            // on a silent scripted/respawn set (the blackout's quiet hand has no flash)
+            if (e == Exposure.Overexposed && ExposureManager.Instance != null
+                && !ExposureManager.Instance.LastChangeSilent)
+                _flash = 1f;
+            // the optics jolt: fires on every COMMITTED (non-silent) switch — Under/Normal too,
+            // where _flash stays quiet — plus a tiny camera tick so the frame "blinks"
+            if (ExposureManager.Instance != null && !ExposureManager.Instance.LastChangeSilent)
+            {
+                _jolt = 1f;
+                _joltMode = e;
+                CameraFollow.Instance?.AddTrauma(0.05f); // a barely-there blink, not a shake
+            }
         }
 
         /// Finale flare: warm filter, blown bloom, lifted exposure. Wins over exposure.
@@ -150,6 +187,12 @@ namespace Darkroom
 
         public void ClearOverride() { _override = false; }
 
+        /// The fixer wash: once she develops the final print, true COLOUR floods
+        /// back for the first time in the game. A persistent layer applied ON TOP
+        /// of the exposure grade AND the finale flare, so the world stays in colour
+        /// through the ending (and the captured frame 11 develops in colour).
+        public void BeginColorWash() { _washed = true; }
+
         void Update()
         {
             var dst = _override ? _overrideGrade : _target;
@@ -165,7 +208,44 @@ namespace Darkroom
             _cur.stShadows = Color.Lerp(_cur.stShadows, dst.stShadows, k);
             _cur.stHighlights = Color.Lerp(_cur.stHighlights, dst.stHighlights, k);
             _cur.stBalance = Mathf.Lerp(_cur.stBalance, dst.stBalance, k);
-            Apply(_cur);
+
+            _wash = Mathf.MoveTowards(_wash, _washed ? 1f : 0f, Time.deltaTime * 1.2f);
+            _flash = Mathf.MoveTowards(_flash, 0f, Time.deltaTime / FlashDecay);
+            _jolt = Mathf.MoveTowards(_jolt, 0f, Time.deltaTime / JoltDecay);
+
+            var shown = _cur;
+            // the colour wash sits ON TOP of everything (exposure grade + finale
+            // flare): saturation goes clearly POSITIVE and the warm/cool filters
+            // neutralise, so it reads as "now it's in colour", not just-another-grade.
+            if (_wash > 0.0001f)
+            {
+                shown.saturation = Mathf.Lerp(_cur.saturation, WashSat, _wash);
+                shown.filter = Color.Lerp(_cur.filter, Color.white, _wash);
+                shown.stShadows = Color.Lerp(_cur.stShadows, StNeutral, _wash);
+                shown.stHighlights = Color.Lerp(_cur.stHighlights, StNeutral, _wash);
+            }
+            // the shutter-flash punch rides on top: a bright bloom spike that decays
+            // into the blown Over grade — the camera firing the instant you commit
+            if (_flash > 0.0001f)
+            {
+                shown.postExposure += FlashExposure * _flash;
+                shown.bloom += FlashBloom * _flash;
+                shown.bloomThreshold = Mathf.Lerp(shown.bloomThreshold, 0.4f, _flash);
+            }
+            Apply(shown);
+
+            // the optics jolt: CA fringe + lens distortion, squared for a snap-and-settle.
+            // Not part of the grade lerp — they live at 0 at rest, so drive them straight.
+            if (_ca != null)
+            {
+                float j = _jolt * _jolt;
+                float caPeak = _joltMode == Exposure.Overexposed ? CAOver
+                             : _joltMode == Exposure.Underexposed ? CAUnder : CANormal;
+                float lensPeak = _joltMode == Exposure.Overexposed ? LensOver
+                               : _joltMode == Exposure.Underexposed ? LensUnder : LensNormal;
+                _ca.intensity.value = caPeak * j;
+                _lens.intensity.value = lensPeak * j;
+            }
         }
 
         void Apply(Grade g)
@@ -188,6 +268,12 @@ namespace Darkroom
         public void ResetForRestart()
         {
             _override = false;
+            _washed = false;
+            _wash = 0f;
+            _flash = 0f;
+            _jolt = 0f;
+            if (_ca != null) _ca.intensity.value = 0f;
+            if (_lens != null) _lens.intensity.value = 0f;
             _target = Normal;
             _cur = Normal;
             Apply(_cur);

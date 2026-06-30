@@ -80,6 +80,28 @@ namespace Darkroom
             }
         }
 
+        static Material _developMat;
+        static bool _developTried;
+
+        /// Authored "develop-in" material (Resources/SpriteDevelop.shader): a noise
+        /// dissolve + halation front that replaces the flat alpha fade on the
+        /// most-seen beat (the respawn re-develop). Returns NULL if the custom shader
+        /// isn't present/compiled, so callers fall back to the alpha fade and NEVER
+        /// render pink (the same defensive spirit as the Shader.Find fallbacks above).
+        public static Material DevelopMat
+        {
+            get
+            {
+                if (!_developTried)
+                {
+                    _developTried = true;
+                    var sh = Shader.Find("Darkroom/SpriteDevelop");
+                    if (sh != null) _developMat = new Material(sh) { name = "DarkroomDevelop" };
+                }
+                return _developMat;
+            }
+        }
+
         static Color Hex(int v) =>
             new Color(((v >> 16) & 0xFF) / 255f, ((v >> 8) & 0xFF) / 255f, (v & 0xFF) / 255f, 1f);
 
@@ -111,6 +133,14 @@ namespace Darkroom
         public const int OrderEnemy    = 40;
         public const int OrderPickup   = 45;
         public const int OrderPlayer   = 50;
+
+        // Backdrop depth bands (negative = behind the play space). The far scenes sit
+        // at -22 and the hanging midground clutter at -10; these slot a nearer scene
+        // band and the silhouette figures between them, and a framing layer IN FRONT
+        // of the player (60 > OrderPlayer) for the out-of-focus foreground.
+        public const int OrderNear       = -14; // backdrop-near band (between scenes -22 and midground -10)
+        public const int OrderFigure     = -8;  // background silhouette figures (front of midground, behind lamps -6..-4)
+        public const int OrderForeground = 60;  // out-of-focus foreground framing (in front of the player)
 
         public static Color ColorFor(ExposureObjectType t)
         {

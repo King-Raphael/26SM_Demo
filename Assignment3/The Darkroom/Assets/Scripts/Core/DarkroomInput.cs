@@ -1,3 +1,4 @@
+using UnityEngine;
 using UnityEngine.InputSystem;
 
 namespace Darkroom
@@ -62,6 +63,12 @@ namespace Darkroom
         public static bool WarpPrevPressed => K != null && K.leftBracketKey.wasPressedThisFrame;
         public static bool WarpNextPressed => K != null && K.rightBracketKey.wasPressedThisFrame;
         public static bool LabWarpPressed => K != null && K.pKey.wasPressedThisFrame;
+
+        // Mouse — for the clickable / draggable exposure slider.
+        public static bool PointerPressed => K_mouse && Mouse.current.leftButton.wasPressedThisFrame;
+        public static bool PointerHeld => K_mouse && Mouse.current.leftButton.isPressed;
+        public static Vector2 PointerPos => Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero;
+        static bool K_mouse => Mouse.current != null;
 
         public static bool DrawHeld
         {

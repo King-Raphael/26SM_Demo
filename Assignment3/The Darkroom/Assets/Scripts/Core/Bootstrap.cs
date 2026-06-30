@@ -28,6 +28,23 @@ namespace Darkroom
         {
             if (Object.FindAnyObjectByType<GameManager>() != null) return;
 
+            // Safety: an edit-mode scene preview (DarkroomSceneBaker) can leak into Play if
+            // it wasn't cleared and Domain Reload is off. Its objects are forced-visible and
+            // NOT exposure-synced, so a leftover set reads as "bridges show outside Under" and
+            // "burned walls still block". Destroy any preview roots BEFORE building so the
+            // runtime scene is never doubled. (No-op in real builds — no markers exist.)
+            // A leftover build root in the open scene — a stale object, or an editor
+            // preview (DarkroomSceneBaker) whose marker was lost across a recompile —
+            // makes Boot SKIP BackdropBuilder (backdrop "gone") and DOUBLE the level
+            // (ghost bridges that show outside Under, walls that still block after
+            // burning). Boot always builds these fresh, so destroy any pre-existing
+            // copies first — by marker AND by name (no-op in real builds).
+            foreach (var m in Object.FindObjectsByType<DarkroomPreviewMarker>(FindObjectsInactive.Include))
+                if (m != null) Object.DestroyImmediate(m.gameObject);
+            foreach (var n in new[] { "_Backdrop", "_Level", "_HUD" })
+                for (var s = GameObject.Find(n); s != null; s = GameObject.Find(n))
+                    Object.DestroyImmediate(s);
+
             Layers.Validate();
             // Strokes collide with Player only; everything else stays default.
             for (int i = 0; i < 32; i++)
@@ -42,6 +59,8 @@ namespace Darkroom
             managers.AddComponent<LightField>();
             managers.AddComponent<PauseController>();
             managers.AddComponent<PhotoAlbum>();
+            managers.AddComponent<GlassRefraction>(); // before the HUD: builds the glass material it uses
+            managers.AddComponent<DarkroomPostDriver>(); // feeds the Darkroom/Post fullscreen shader globals
 
             HUDController.Build();
             BackdropBuilder.Build();
@@ -91,6 +110,8 @@ namespace Darkroom
 
             if (cam.GetComponent<DustMotes>() == null)
                 cam.gameObject.AddComponent<DustMotes>();
+            if (cam.GetComponent<VaporMotes>() == null)
+                cam.gameObject.AddComponent<VaporMotes>(); // faint rising chemical haze (W4 atmosphere)
         }
     }
 }

@@ -18,6 +18,7 @@ namespace Darkroom
 
         LineRenderer _lr;
         LineRenderer _glow;
+        LineRenderer _halo;
         Light2D _light;
         ExposureObject _eo;
         readonly List<Vector2> _pts = new List<Vector2>();
@@ -29,10 +30,12 @@ namespace Darkroom
             go.layer = Layers.Strokes;
             go.SetActive(false); // defer Awake/OnEnable until configured
 
-            // tapered ends: the pen pressure of light
+            // tapered ends: light eases to a FINE POINT, so a stroke that ends in
+            // mid-air (a sharp pen-up / hairpin) closes to a tip instead of a fat
+            // glowing cap — the cap was reading as an "explosion" at the corner.
             var taper = new AnimationCurve(
-                new Keyframe(0f, 0.7f), new Keyframe(0.15f, 1f),
-                new Keyframe(0.85f, 1f), new Keyframe(1f, 0.7f));
+                new Keyframe(0f, 0.25f), new Keyframe(0.12f, 1f),
+                new Keyframe(0.88f, 1f), new Keyframe(1f, 0.25f));
 
             var lr = go.AddComponent<LineRenderer>();
             lr.useWorldSpace = true;
@@ -41,11 +44,12 @@ namespace Darkroom
             lr.sharedMaterial = VisualFactory.GlowMat;
             lr.sortingOrder = VisualFactory.OrderStroke;
             lr.numCapVertices = 4;
-            lr.numCornerVertices = 2;
+            lr.numCornerVertices = 3;
             lr.positionCount = 0;
             var c = VisualFactory.ColorFor(type);
-            lr.startColor = c;
-            lr.endColor = c;
+            var core = Color.Lerp(c, Color.white, 0.40f); // brighter near-white core
+            lr.startColor = core;
+            lr.endColor = core;
 
             // soft glow line behind the stroke
             var glowGO = new GameObject("Glow");
@@ -61,9 +65,27 @@ namespace Darkroom
             glow.numCornerVertices = 4;
             glow.positionCount = 0;
             var gc = c;
-            gc.a = 0.55f; // visible while drawing; matrix-driven after fix
+            gc.a = 0.50f; // visible while drawing; matrix-driven after fix
             glow.startColor = gc;
             glow.endColor = gc;
+
+            // broad soft halo behind the beam — luminous falloff. Tighter than
+            // DarkTrail's x11: a player stroke can hairpin in mid-air, where a very
+            // wide beam folds over itself into a bright blob.
+            var haloGO = new GameObject("Halo");
+            haloGO.transform.SetParent(go.transform, false);
+            var halo = haloGO.AddComponent<LineRenderer>();
+            halo.useWorldSpace = true;
+            halo.widthMultiplier = Width * 7f;
+            halo.widthCurve = taper;
+            halo.sharedMaterial = VisualFactory.BeamMat;
+            halo.textureMode = LineTextureMode.Stretch;
+            halo.sortingOrder = VisualFactory.OrderStroke - 2;
+            halo.numCapVertices = 6;
+            halo.numCornerVertices = 4;
+            halo.positionCount = 0;
+            var hc = c; hc.a = 0.22f;
+            halo.startColor = hc; halo.endColor = hc;
 
             var ec = go.AddComponent<EdgeCollider2D>();
             ec.edgeRadius = EdgeRadius;
@@ -80,6 +102,7 @@ namespace Darkroom
             var ts = go.AddComponent<TrailStroke>();
             ts._lr = lr;
             ts._glow = glow;
+            ts._halo = halo;
             ts._light = light;
             ts.Edge = ec;
             ts._eo = eo;
@@ -87,10 +110,8 @@ namespace Darkroom
             eo.OverlapTester = ts.OverlapsBounds;
             eo.OnAlphaApplied = a =>
             {
-                var g = glow.startColor;
-                g.a = a * 0.55f;
-                glow.startColor = g;
-                glow.endColor = g;
+                var g = glow.startColor; g.a = a * 0.50f; glow.startColor = g; glow.endColor = g;
+                var h = halo.startColor; h.a = a * 0.22f; halo.startColor = h; halo.endColor = h;
                 light.intensity = a * 0.6f;
             };
 
@@ -103,11 +124,25 @@ namespace Darkroom
         public void AddPoint(Vector2 p)
         {
             _pts.Add(p);
-            _lr.positionCount = _pts.Count;
-            _lr.SetPosition(_pts.Count - 1, p);
-            _glow.positionCount = _pts.Count;
-            _glow.SetPosition(_pts.Count - 1, p);
+            // render along a Chaikin-smoothed curve so sharp drawn corners don't
+            // bunch the wide glow into a hotspot. The COLLIDER stays on the raw
+            // _pts (Fix), so the platform you stand on is exactly what you drew.
+            var sm = _pts.Count >= 3 ? DarkTrail.Chaikin(_pts.ToArray(), 1) : _pts.ToArray();
+            SetLine(_lr, sm); SetLine(_glow, sm); SetLine(_halo, sm);
             _light.transform.position = p; // light rides the pen while drawing
+        }
+
+        static void SetLine(LineRenderer lr, Vector2[] pts)
+        {
+            lr.positionCount = pts.Length;
+            for (int i = 0; i < pts.Length; i++) lr.SetPosition(i, pts[i]);
+        }
+
+        void SetRenderEnabled(bool on)
+        {
+            if (_lr != null) _lr.enabled = on;
+            if (_glow != null) _glow.enabled = on;
+            if (_halo != null) _halo.enabled = on;
         }
 
         /// Returns false (caller should discard) if the stroke is too short to fix.
@@ -231,16 +266,14 @@ namespace Darkroom
             float t = 0f;
             while (t < 0.5f)
             {
-                _lr.enabled = !_lr.enabled;
-                _glow.enabled = _lr.enabled;
+                SetRenderEnabled(!_lr.enabled);
                 yield return new WaitForSeconds(0.08f);
                 t += 0.08f;
             }
             // keep blinking while the player is standing on it
             while (player != null && player.IsStandingOn(Edge))
             {
-                _lr.enabled = !_lr.enabled;
-                _glow.enabled = _lr.enabled;
+                SetRenderEnabled(!_lr.enabled);
                 yield return new WaitForSeconds(0.08f);
             }
             Destroy(gameObject);

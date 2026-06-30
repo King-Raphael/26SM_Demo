@@ -85,7 +85,7 @@ namespace Darkroom
                 var gm = GameManager.Instance;
                 bool respawning = gm != null && gm.IsRespawning;
                 var ad = AudioDirector.Instance;
-                if (!respawning && ad != null) { if (r) ad.PlayUmbraOpen(); else ad.PlayUmbraSeal(); }
+                if (!respawning && ad != null) { if (r) ad.PlayUmbraOpen(transform.position.x); else ad.PlayUmbraSeal(transform.position.x); }
             }
             _retracted = r;
             if (_col != null) _col.enabled = !r; // collider follows the logic at once

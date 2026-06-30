@@ -58,11 +58,17 @@ namespace Darkroom
             float k = _t / burnSeconds;
             OnCharProgress?.Invoke(k);
             // a sizzle that swells with the heat (shared bed: loudest paper wins)
-            if (AudioDirector.Instance != null) AudioDirector.Instance.RequestBurn(k);
+            if (AudioDirector.Instance != null) AudioDirector.Instance.RequestBurn(k, transform.position.x);
 
-            // the paper browns and glows; the ember swells and flickers harder
+            // the paper CHARS and is consumed as it burns: brown→char + fading alpha, so
+            // by punch-through the intact sheet has gone translucent (not a glowing
+            // bright-orange rectangle). The scars/embers carry the heat colour.
             if (_sr != null)
-                _sr.color = Color.Lerp(_baseColor, new Color(1f, 0.74f, 0.42f, 1f), k);
+            {
+                var pc = Color.Lerp(_baseColor, new Color(0.35f, 0.20f, 0.10f, 1f), k);
+                pc.a = Mathf.Lerp(1f, 0.12f, k * k);
+                _sr.color = pc;
+            }
             if (_ember != null)
             {
                 float flick = 1f + (k > 0.25f ? 0.18f * Mathf.Sin(Time.time * 42f) : 0f);
@@ -78,10 +84,17 @@ namespace Darkroom
         {
             _burned = true;
             if (_col != null) _col.enabled = false;                  // burnt through, for good
-            if (_sr != null) _sr.color = new Color(0.10f, 0.09f, 0.10f, 0.30f); // the scar
+            // No more dark-rectangle ghost: the paper itself nearly vanishes (a faint
+            // 0.05 charred film so the gap isn't a clean cut). The ragged char rim
+            // (driven from OnBurned in LevelBuilder) is what reads as the burnt edge.
+            if (_sr != null) { var c = _sr.color; c.a = 0.05f; _sr.color = c; }
             if (_ember != null) _ember.enabled = false;
-            StrokeSparkle.Burst(transform.position, new Color(1f, 0.6f, 0.25f, 1f), 16);
-            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayBurnThrough();
+            // warm embers UP at the moment of punch-through
+            StrokeSparkle.Burst(transform.position, new Color(1f, 0.55f, 0.2f, 1f), 18);
+            // ash flakes DOWN + a few cooling embers (one-shot, self-destructing)
+            AshBurst.Play(transform.position, boxSize);
+            CameraFollow.Instance?.AddTrauma(0.3f); // the wall punches through
+            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayBurnThrough(transform.position.x);
             OnBurned?.Invoke();
         }
     }

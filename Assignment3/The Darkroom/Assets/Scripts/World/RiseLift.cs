@@ -99,7 +99,7 @@ namespace Darkroom
             {
                 _moving = moving;
                 var ad = AudioDirector.Instance;
-                if (ad != null) { if (moving) ad.LiftOn(1.25f); else ad.LiftOff(); }
+                if (ad != null) { if (moving) ad.LiftOn(1.25f, transform.position.x); else ad.LiftOff(); }
             }
 
             float target = solid ? SolidAlpha : GoneAlpha;

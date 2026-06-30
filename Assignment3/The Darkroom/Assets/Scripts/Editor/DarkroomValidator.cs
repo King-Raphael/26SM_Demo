@@ -32,12 +32,12 @@ namespace Darkroom
             Check(rooms.Length == 11, "rooms == 11, got " + rooms.Length);
             Check(rooms.Sum(r => r.checkpoints.Length) == 14, "checkpoints == 14, got " + rooms.Sum(r => r.checkpoints.Length));
             Check(rooms.Sum(r => r.enemies.Length) == 5, "enemies == 5, got " + rooms.Sum(r => r.enemies.Length));
-            Check(rooms.Sum(r => r.sensors.Length) == 3, "sensors == 3 (R6 body + R6 light-meter + R10), got " + rooms.Sum(r => r.sensors.Length));
+            Check(rooms.Sum(r => r.sensors.Length) == 4, "sensors == 4 (R6 body + R6 meter + R10 photo + R10 wash tray), got " + rooms.Sum(r => r.sensors.Length));
             Check(rooms.Sum(r => r.doors.Length) == 3, "doors == 3 (Door_R6 + Door_R6L + Door_R10), got " + rooms.Sum(r => r.doors.Length));
             Check(rooms.Sum(r => r.pickups.Length) == 2, "pickups == 2 (flash/shutter; Under granted at boot), got " + rooms.Sum(r => r.pickups.Length));
             Check(rooms.All(r => !string.IsNullOrEmpty(r.title)), "every room has a HUD title");
             Check(rooms.Sum(r => r.exits.Length) == 2, "exits == 2 (R0 paper-door + R10 finale), got " + rooms.Sum(r => r.exits.Length));
-            Check(rooms.Sum(r => r.hints.Length) == 18, "hints == 18 (R9 umbral teach added), got " + rooms.Sum(r => r.hints.Length));
+            Check(rooms.Sum(r => r.hints.Length) == 18, "hints == 18 (R9 curtain teach pulled; R10 wash), got " + rooms.Sum(r => r.hints.Length));
 
             // ---- newer authored mechanics (added across M11–M16) ----
             Check(rooms.Sum(r => r.trails.Length)    == 1, "trails == 1 (R1_SeeTrail; R0 now climbs DarkPath steps), got " + rooms.Sum(r => r.trails.Length));
@@ -45,8 +45,9 @@ namespace Darkroom
             Check(rooms.Sum(r => r.riseLifts.Length) == 1, "rise lifts == 1 (R4), got "             + rooms.Sum(r => r.riseLifts.Length));
             Check(rooms.Sum(r => r.bridges.Length)   == 1, "light bridges == 1 (R8), got "          + rooms.Sum(r => r.bridges.Length));
             Check(rooms.Sum(r => r.burns.Length)     == 4, "burn-papers == 4 (R2/R5/R10x2), got "   + rooms.Sum(r => r.burns.Length));
-            Check(rooms.Sum(r => r.umbrals.Length)   == 2, "umbral barriers == 2 (R9 debut + R10 reprise), got " + rooms.Sum(r => r.umbrals.Length));
-            Check(rooms.Sum(r => r.fixPlats.Length)  == 3, "latent platforms == 3 (R3 x2 debut + R10 x1 alt route), got " + rooms.Sum(r => r.fixPlats.Length));
+            Check(rooms.Sum(r => r.umbrals.Length)   == 1, "umbral barriers == 1 (R10 only; R9's teach pulled to keep the drop pure), got " + rooms.Sum(r => r.umbrals.Length));
+            Check(rooms.Sum(r => r.fixPlats.Length)  == 5, "latent platforms == 5 (R3 x2 debut + R7/R8/R10 x1 each alt routes), got " + rooms.Sum(r => r.fixPlats.Length));
+            Check(rooms.Sum(r => r.lostFrames.Length) == 4, "lost frames == 4 (verb-gated pockets in R1/R5/R8/R10), got " + rooms.Sum(r => r.lostFrames.Length));
 
             var allBoxes = rooms.SelectMany(r => r.boxes).ToList();
             int darkPaths = allBoxes.Count(b => b.type == ExposureObjectType.DarkPath);
@@ -69,7 +70,7 @@ namespace Darkroom
             // sensor->door ids resolve (now also covers R6's light-meter -> Door_R6L)
             var doorIds = new HashSet<string>(rooms.SelectMany(r => r.doors).Select(d => d.id));
             foreach (var s in rooms.SelectMany(r => r.sensors))
-                Check(doorIds.Contains(s.doorId), "sensor " + s.name + " door id resolves: " + s.doorId);
+                if (!s.wash) Check(doorIds.Contains(s.doorId), "sensor " + s.name + " door id resolves: " + s.doorId);
 
             SeamAudit(allBoxes);
 
@@ -84,7 +85,7 @@ namespace Darkroom
                 r.boxes.Length + r.enemies.Length + r.sensors.Length + r.doors.Length +
                 r.pickups.Length + r.checkpoints.Length + r.hints.Length + r.exits.Length +
                 r.umbrals.Length + r.lifts.Length + r.burns.Length + r.bridges.Length +
-                r.riseLifts.Length + r.trails.Length + r.fixPlats.Length);
+                r.riseLifts.Length + r.trails.Length + r.fixPlats.Length + r.lostFrames.Length);
             int riseRails = rooms.Sum(r => r.riseLifts.Length) * 2;
             int blackout = rooms.Length > 9 ? 1 : 0;
             int prologueProps = 1; // the "PrologueProps" decoration container (room 0)

@@ -260,24 +260,191 @@ namespace Darkroom
             }
         }
 
-        static Sprite _charScar;
+        static Sprite[] _charScars;
+        static Sprite[] _charRims;
+        static Sprite[] _sootStains;
+        const int CharVariants = 6;
 
-        /// A charred burn-through: dark sooty centre with a warm ember edge. Grown
-        /// from a point by BurnPaper as it burns.
-        public static Sprite CharScar
+        /// A charred burn-through, variant `v`: NOT a clean disc but a multi-lobe
+        /// scorch with FBM-ragged edges and a warm ember rim. Several off-centre soot
+        /// lobes union (darkest-wins) into an irregular silhouette; every seed gives a
+        /// different ragged shape, so BurnWall can scatter distinct ones per spot.
+        /// Built lazily and cached (one texture per variant, shared by all instances).
+        public static Sprite CharScar(int v)
         {
-            get
+            if (_charScars == null) _charScars = new Sprite[CharVariants];
+            int i = ((v % CharVariants) + CharVariants) % CharVariants;
+            if (_charScars[i] == null) _charScars[i] = BuildCharScar(1000 + i * 7);
+            return _charScars[i];
+        }
+
+        /// A thin ragged charred RIM for variant `v` — the same multi-lobe silhouette
+        /// outlined and hollowed, so the post-burn wall reads as a singed edge curling
+        /// around emptiness rather than a solid dark fill.
+        public static Sprite CharRim(int v)
+        {
+            if (_charRims == null) _charRims = new Sprite[CharVariants];
+            int i = ((v % CharVariants) + CharVariants) % CharVariants;
+            if (_charRims[i] == null) _charRims[i] = BuildCharRim(1000 + i * 7);
+            return _charRims[i];
+        }
+
+        /// A SOFT charred soot smudge for variant `v` — the ragged multi-lobe silhouette
+        /// rendered as a feathered stain (dense at the cores, fading to nothing at the
+        /// edge), no crisp outline. The post-burn remnant: scorch residue, not a drawn ring.
+        public static Sprite SootStain(int v)
+        {
+            if (_sootStains == null) _sootStains = new Sprite[CharVariants];
+            int i = ((v % CharVariants) + CharVariants) % CharVariants;
+            if (_sootStains[i] == null) _sootStains[i] = BuildSootStain(1000 + i * 7);
+            return _sootStains[i];
+        }
+
+        // Per-pixel "inside the ragged multi-lobe scorch" test, shared by scar + rim.
+        // `depth` (out) is the normalised distance-from-edge (0 at rim, ->1 at a lobe
+        // core), used to darken the soot inward. Returns false outside every lobe.
+        static bool CharField(float x, float y, float[] lcx, float[] lcy, float[] lr, int[] ls, int nL, out float depth)
+        {
+            bool hit = false; depth = 0f;
+            for (int l = 0; l < nL; l++)
             {
-                if (_charScar == null)
-                {
-                    const int N = 64;
-                    var cv = new Canvas(N, N);
-                    cv.Radial(32f, 32f, 30f, 30f, 0f, C(0x16100C), r => Mathf.Clamp01((1f - r) * 2.2f));      // soot
-                    cv.Radial(32f, 32f, 30f, 30f, 0f, C(0x7A3A14), r => r > 0.58f ? Mathf.Clamp01((1f - r) * 2.6f) * 0.6f : 0f); // ember rim
-                    _charScar = cv.ToSprite("CharScar", N);
-                }
-                return _charScar;
+                float dx = x - lcx[l], dy = y - lcy[l];
+                float d = Mathf.Sqrt(dx * dx + dy * dy);
+                if (d > lr[l] * 1.7f) continue;
+                float t = Mathf.Atan2(dy, dx);
+                // value noise sampled around a unit circle => seamless ragged coastline
+                float n = PixelArt.ValueNoise(Mathf.Cos(t) * 2.5f + l, Mathf.Sin(t) * 2.5f + l, ls[l]) * 0.6f
+                        + PixelArt.ValueNoise(Mathf.Cos(t) * 5f, Mathf.Sin(t) * 5f, ls[l] + 9) * 0.4f;
+                float rEdge = lr[l] * (0.62f + 0.55f * n);
+                if (d < rEdge) { hit = true; depth = Mathf.Max(depth, 1f - d / rEdge); }
             }
+            return hit;
+        }
+
+        // Lay out 3-4 off-centre overlapping lobes for a 64-canvas scar (deterministic
+        // per seed). Returned arrays feed CharField.
+        static void CharLobes(int seed, out float[] lcx, out float[] lcy, out float[] lr, out int[] ls, out int nL)
+        {
+            var rng = new System.Random(seed);
+            nL = 3 + rng.Next(0, 2);                       // 3-4 lobes
+            lcx = new float[nL]; lcy = new float[nL]; lr = new float[nL]; ls = new int[nL];
+            for (int l = 0; l < nL; l++)
+            {
+                lcx[l] = 24f + (float)rng.NextDouble() * 16f;   // off-centre, overlapping mid
+                lcy[l] = 24f + (float)rng.NextDouble() * 16f;
+                lr[l] = 12f + (float)rng.NextDouble() * 8f;
+                ls[l] = seed + l * 31;
+            }
+        }
+
+        static Sprite BuildCharScar(int seed)
+        {
+            const int N = 64;
+            var cv = new Canvas(N, N);
+            float ss = cv.PW / (float)N;                   // physical-per-logical (SS)
+            CharLobes(seed, out var lcx, out var lcy, out var lr, out var ls, out int nL);
+
+            Color32 soot = C(0x16100C), inner = C(0x0E0907);
+            for (int py = 0; py < cv.PH; py++)
+                for (int px = 0; px < cv.PW; px++)
+                {
+                    float x = px / ss, y = py / ss;
+                    if (CharField(x, y, lcx, lcy, lr, ls, nL, out float depth))
+                        cv.Px[py * cv.PW + px] = Color32.Lerp(soot, inner, depth * 0.7f);
+                }
+
+            // charcoal speckle — ONLY inside the scorch (a full-rect Grain would tint the
+            // transparent background too, leaving a faint speckled SQUARE behind each scar).
+            // Keep the existing alpha so the soot stays solid (no see-through holes).
+            Color32 spec = C(0x251A12);
+            for (int py = 0; py < cv.PH; py++)
+                for (int px = 0; px < cv.PW; px++)
+                {
+                    int idx = py * cv.PW + px;
+                    if (cv.Px[idx].a == 0) continue;                       // leave background fully clear
+                    if (PixelArt.Hash(px, py, seed + 3) > 1f - 0.28f)
+                        cv.Px[idx] = new Color32(spec.r, spec.g, spec.b, cv.Px[idx].a);
+                }
+
+            // ember rim: a soot pixel touching transparency becomes warm amber (the
+            // established 0x7A3A14 / 0x9A4A18 ember tones — no red).
+            var src = (Color32[])cv.Px.Clone();
+            int PW = cv.PW, PH = cv.PH;
+            Color32 ember = C(0x7A3A14), hot = C(0x9A4A18);
+            for (int py = 1; py < PH - 1; py++)
+                for (int px = 1; px < PW - 1; px++)
+                {
+                    if (src[py * PW + px].a == 0) continue;
+                    bool edge = src[py * PW + px - 1].a == 0 || src[py * PW + px + 1].a == 0
+                             || src[(py - 1) * PW + px].a == 0 || src[(py + 1) * PW + px].a == 0;
+                    if (edge) cv.Px[py * PW + px] = (PixelArt.Hash(px, py, seed) > 0.5f) ? hot : ember;
+                }
+
+            return cv.ToSprite("CharScar" + seed, N);
+        }
+
+        static Sprite BuildCharRim(int seed)
+        {
+            const int N = 64;
+            var cv = new Canvas(N, N);
+            float ss = cv.PW / (float)N;
+            CharLobes(seed, out var lcx, out var lcy, out var lr, out var ls, out int nL);
+
+            // fill the ragged silhouette solid, then keep only the edge band.
+            Color32 fill = C(0x241712);
+            for (int py = 0; py < cv.PH; py++)
+                for (int px = 0; px < cv.PW; px++)
+                {
+                    float x = px / ss, y = py / ss;
+                    if (CharField(x, y, lcx, lcy, lr, ls, nL, out _))
+                        cv.Px[py * cv.PW + px] = fill;
+                }
+
+            // hollow it: an opaque pixel keeps a charred-rim colour only if it sits
+            // within `w` of transparency; everything deeper is erased -> ragged outline.
+            int PW = cv.PW, PH = cv.PH, w = Mathf.Max(1, (int)ss);
+            var src = (Color32[])cv.Px.Clone();
+            Color32 rim = C(0x2E1C12), ember = C(0x7A3A14);
+            for (int py = 0; py < PH; py++)
+                for (int px = 0; px < PW; px++)
+                {
+                    if (src[py * PW + px].a == 0) { cv.Px[py * PW + px] = new Color32(0, 0, 0, 0); continue; }
+                    bool edge = false;
+                    for (int oy = -w; oy <= w && !edge; oy++)
+                        for (int ox = -w; ox <= w; ox++)
+                        {
+                            int nx = px + ox, ny = py + oy;
+                            if (nx < 0 || ny < 0 || nx >= PW || ny >= PH || src[ny * PW + nx].a == 0) { edge = true; break; }
+                        }
+                    cv.Px[py * PW + px] = edge
+                        ? ((PixelArt.Hash(px, py, seed + 5) > 0.78f) ? ember : rim)   // mostly soot, a few embers
+                        : new Color32(0, 0, 0, 0);
+                }
+
+            return cv.ToSprite("CharRim" + seed, N);
+        }
+
+        static Sprite BuildSootStain(int seed)
+        {
+            const int N = 64;
+            var cv = new Canvas(N, N);
+            float ss = cv.PW / (float)N;
+            CharLobes(seed, out var lcx, out var lcy, out var lr, out var ls, out int nL);
+
+            Color32 soot = C(0x140E0A);
+            for (int py = 0; py < cv.PH; py++)
+                for (int px = 0; px < cv.PW; px++)
+                {
+                    float x = px / ss, y = py / ss;
+                    if (CharField(x, y, lcx, lcy, lr, ls, nL, out float depth))
+                    {
+                        // soft: dense at the lobe cores, feathering to nothing at the ragged
+                        // edge — a stain, not an outline. (depth: 0 at edge, ->1 at core.)
+                        byte a = (byte)(Mathf.Clamp01(depth * 1.25f) * 205f);
+                        cv.Px[py * cv.PW + px] = new Color32(soot.r, soot.g, soot.b, a);
+                    }
+                }
+            return cv.ToSprite("SootStain" + seed, N);
         }
 
         static Sprite[] _emulsion;

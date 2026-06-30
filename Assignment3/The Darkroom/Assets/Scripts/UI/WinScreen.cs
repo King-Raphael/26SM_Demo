@@ -21,6 +21,7 @@ namespace Darkroom
 
         Image _flash;
         Image _figure;
+        CanvasGroup _eyeGroup; // the glowing eye — the punctum, surfaced LAST
         CanvasGroup _folioGroup, _textGroup;
         Text[] _marginLines;
         CanvasGroup[] _thumbGroups;
@@ -66,12 +67,25 @@ namespace Darkroom
                 yield return new WaitForSeconds(0.3f);
             }
 
-            // the print develops: her silhouette surfaces over ~2 s
+            // the print develops on genuinely BLANK paper (no pre-ghost): her faceless
+            // silhouette AMPLIFIES out of nothing like silver halide (near-zero -> full,
+            // an exponential curve), cold -> warm. Her glowing eye — the punctum — does
+            // NOT come up with the body; it ignites LAST, in the final fifth.
             if (AudioDirector.Instance != null) AudioDirector.Instance.PlayDevelopLong();
+            var coldFigure = new Color(0.72f, 0.78f, 0.86f);
+            var warmFigure = new Color(1f, 0.86f, 0.72f);
             yield return Fade(t =>
             {
-                var c = _figure.color; c.a = t; _figure.color = c;
-            }, 1.9f);
+                float dev = Mathf.Pow(t, 1.9f); // exponential amplification (not a flat fade)
+                float chromaK = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.58f) / 0.42f));
+                var c = Color.Lerp(coldFigure, warmFigure, chromaK);
+                c.a = dev;
+                _figure.color = c;
+                // the eye surfaces last — the punctum, never with the body
+                float eyeK = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.80f) / 0.20f));
+                _eyeGroup.alpha = eyeK;
+            }, 2.2f);
+            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayDevelop(); // the eye's quiet click
             yield return Fade(t => _folioGroup.alpha = t, 0.4f);
             yield return new WaitForSeconds(0.35f);
 
@@ -86,6 +100,24 @@ namespace Darkroom
             }
 
             yield return Fade(t => _textGroup.alpha = t, 0.6f);
+
+            // coda: the frames she almost forgot — a quiet truth beside the roll
+            yield return LostCoda();
+        }
+
+        /// If the player surfaced any lost frames, a single closing line under the
+        /// finale block. The actual gallery wall lives in the pause-menu darkroom;
+        /// here it stays a margin note so the eleven-frame contact sheet is untouched.
+        IEnumerator LostCoda()
+        {
+            int found = GameManager.Instance != null ? GameManager.Instance.LostFound : 0;
+            if (found <= 0) yield break;
+            var line = HUDController.NewText("LostLine", transform,
+                "you kept " + found + " you'd forgotten.",
+                20, new Color(0.74f, 0.72f, 0.68f, 0f), TextAnchor.MiddleCenter, display: true);
+            HUDController.Place(line.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -188f), new Vector2(900f, 28f));
+            yield return new WaitForSeconds(0.4f);
+            yield return Fade(t => { var c = line.color; c.a = t; line.color = c; }, 0.8f);
         }
 
         static IEnumerator Fade(System.Action<float> apply, float dur)
@@ -133,19 +165,26 @@ namespace Darkroom
             HUDController.Place(paper.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 150f), new Vector2(340f, 460f));
             HUDController.AddBorder(paper.rectTransform, new Color(0.10f, 0.10f, 0.11f, 0.85f));
 
-            // BOOKEND: the once-blank eleventh frame was never empty — she was always
-            // LATENT in it. A faint ghost sits on the warm paper from the moment it is
-            // revealed; the full self-portrait then develops in over it. (The prologue's
-            // blank-paper door, answered — and it lands even for players who skipped it.)
-            var latent = HUDController.NewImage("SelfPortraitLatent", paper.transform, new Color(1f, 1f, 1f, 0.12f));
-            latent.sprite = SilhouetteArt.PlayerIdle;
-            latent.preserveAspect = true;
-            HUDController.Place(latent.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 30f), new Vector2(180f, 330f));
-
+            // BOOKEND: the eleventh frame reads as genuinely BLANK photographic paper —
+            // no pre-ghost. The self-portrait develops out of nothing (Sequence), the
+            // latent image implied by the blank, not shown. She develops FACELESS; the
+            // eye is a separate glint surfaced last (the punctum).
             _figure = HUDController.NewImage("SelfPortrait", paper.transform, new Color(1f, 1f, 1f, 0f));
-            _figure.sprite = SilhouetteArt.PlayerIdle;
+            _figure.sprite = SilhouetteArt.PlayerBlank; // faceless — no baked eye
             _figure.preserveAspect = true;
             HUDController.Place(_figure.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 30f), new Vector2(180f, 330f));
+
+            // the glowing eye — a soft glint + halo at the silhouette's eye, revealed last
+            var eyeRT = HUDController.NewRect("EyeGlint", paper.transform);
+            _eyeGroup = eyeRT.gameObject.AddComponent<CanvasGroup>();
+            _eyeGroup.alpha = 0f;
+            HUDController.Place(eyeRT, new Vector2(0.5f, 0.5f), new Vector2(19f, 134f), new Vector2(40f, 40f));
+            var halo = HUDController.NewImage("Halo", eyeRT, new Color(1f, 0.95f, 0.84f, 0.55f));
+            halo.sprite = PixelArt.SoftGlow;
+            HUDController.Place(halo.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(34f, 34f));
+            var dot = HUDController.NewImage("Dot", eyeRT, new Color(1f, 0.97f, 0.88f, 1f));
+            dot.sprite = PixelArt.Disc;
+            HUDController.Place(dot.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(8f, 8f));
 
             var folioRT = HUDController.NewRect("Folio", paper.transform);
             _folioGroup = folioRT.gameObject.AddComponent<CanvasGroup>();
@@ -162,7 +201,7 @@ namespace Darkroom
                 _marginLines[i] = HUDController.NewText("Margin" + i, transform, MarginCopy[i],
                     21, new Color(0.78f, 0.76f, 0.72f, 0f), TextAnchor.MiddleCenter, display: true);
                 HUDController.Place(_marginLines[i].rectTransform, new Vector2(0.5f, 0.5f),
-                    new Vector2(0f, -104f - i * 36f), new Vector2(900f, 30f));
+                    new Vector2(0f, -120f - i * 30f), new Vector2(900f, 30f));
             }
 
             // the DEVELOPED block (arrives last, as a group)
@@ -173,9 +212,9 @@ namespace Darkroom
 
             var text = HUDController.NewText("WinText", blockRT,
                 "DEVELOPED.\nThe final image holds.\nPress R to restart.",
-                34, new Color(0.96f, 0.94f, 0.90f, 1f), TextAnchor.MiddleCenter, display: true, shadow: true);
+                28, new Color(0.96f, 0.94f, 0.90f, 1f), TextAnchor.MiddleCenter, display: true, shadow: true);
             text.lineSpacing = 1.4f;
-            HUDController.Place(text.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -256f), new Vector2(1200f, 160f));
+            HUDController.Place(text.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -270f), new Vector2(1200f, 150f));
 
             var gm = GameManager.Instance;
             if (gm != null)
@@ -183,7 +222,7 @@ namespace Darkroom
                 var time = HUDController.NewText("WinTime", blockRT,
                     "TIME  " + HUDController.FormatTime(gm.RunTime),
                     24, new Color(0.80f, 0.78f, 0.74f, 1f), TextAnchor.MiddleCenter);
-                HUDController.Place(time.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -356f), new Vector2(600f, 36f));
+                HUDController.Place(time.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -360f), new Vector2(600f, 36f));
             }
 
             // photo caption, like the margin print on a contact sheet:
@@ -193,7 +232,7 @@ namespace Darkroom
             var caption = HUDController.NewText("WinCaption", blockRT,
                 "f/1.4 · 1/125 · ISO 400 — SELF PORTRAIT, frame 11 of 11 · " + take,
                 20, new Color(0.55f, 0.53f, 0.50f, 1f), TextAnchor.MiddleCenter);
-            HUDController.Place(caption.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 130f), new Vector2(1000f, 30f));
+            HUDController.Place(caption.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 112f), new Vector2(1000f, 30f));
 
             BuildContactStrip();
         }

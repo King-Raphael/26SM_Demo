@@ -24,6 +24,11 @@ namespace Darkroom
         // the slab only appears once the player is within this x-range, so the
         // descent can't be spotted from the previous room's bridge while in UNDER
         const float RevealDistX = 4f;
+        // a held breath as the shadow takes her weight before it begins to sink —
+        // the "caught" beat lands instead of the floor just dropping out
+        const float CatchHang = 0.45f;
+
+        float _rideClock; // accumulates while ridden; gates the catch-hang
 
         Rigidbody2D _rb;
         Collider2D _col;
@@ -60,6 +65,7 @@ namespace Darkroom
             else transform.position = new Vector3(transform.position.x, topY, 0f);
             _solid = false;
             _alpha = GoneAlpha;
+            _rideClock = 0f;
             if (_col != null) _col.enabled = false;
             ApplyAlpha(_alpha);
             if (_moving) { _moving = false; if (AudioDirector.Instance != null) AudioDirector.Instance.LiftOff(); }
@@ -85,7 +91,8 @@ namespace Darkroom
             }
 
             // sink only while BEING RIDDEN, so it waits at the top to catch the
-            // player and then carries them down (not before)
+            // player and then carries them down (not before) — and only after a
+            // brief catch-hang, so the shadow visibly TAKES her weight first
             bool moving = false;
             if (solid && _rb.position.y > bottomY)
             {
@@ -93,22 +100,27 @@ namespace Darkroom
                               && gm.Player.IsStandingOn(_col);
                 if (ridden)
                 {
-                    float newY = Mathf.MoveTowards(_rb.position.y, bottomY, sinkSpeed * Time.fixedDeltaTime);
-                    float dy = newY - _rb.position.y;
-                    if (dy != 0f)
+                    _rideClock += Time.fixedDeltaTime;
+                    if (_rideClock >= CatchHang)
                     {
-                        _rb.MovePosition(new Vector2(_rb.position.x, newY));
-                        gm.Player.Body.position += new Vector2(0f, dy);
-                        moving = true;
+                        float newY = Mathf.MoveTowards(_rb.position.y, bottomY, sinkSpeed * Time.fixedDeltaTime);
+                        float dy = newY - _rb.position.y;
+                        if (dy != 0f)
+                        {
+                            _rb.MovePosition(new Vector2(_rb.position.x, newY));
+                            gm.Player.Body.position += new Vector2(0f, dy);
+                            moving = true;
+                        }
                     }
                 }
+                else _rideClock = 0f;
             }
             // a slab of shadow, sinking: a dark low motor while it actually moves
             if (moving != _moving)
             {
                 _moving = moving;
                 var ad = AudioDirector.Instance;
-                if (ad != null) { if (moving) ad.LiftOn(0.7f); else ad.LiftOff(); }
+                if (ad != null) { if (moving) ad.LiftOn(0.7f, transform.position.x); else ad.LiftOff(); }
             }
 
             float target = solid ? SolidAlpha : GoneAlpha;

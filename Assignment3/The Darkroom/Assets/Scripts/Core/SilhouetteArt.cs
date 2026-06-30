@@ -86,7 +86,11 @@ namespace Darkroom
                 }
             }
 
-            public Sprite ToSprite(string name, float ppu)
+            public Sprite ToSprite(string name, float ppu) => ToSprite(name, ppu, new Vector2(0.5f, 0.5f));
+
+            /// pivot lets standing figures use a bottom-centre pivot (0.5,0) and hanging
+            /// limbs a top-centre pivot (0.5,1) so a joint can swing them.
+            public Sprite ToSprite(string name, float ppu, Vector2 pivot)
             {
                 // alpha-weighted box downsample SS×SS -> 1 (no dark edge fringes)
                 var outPx = new Color32[W * H];
@@ -109,7 +113,7 @@ namespace Darkroom
                 tex.filterMode = FilterMode.Bilinear;
                 tex.SetPixels32(outPx);
                 tex.Apply();
-                var s = Sprite.Create(tex, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f), ppu, 0, SpriteMeshType.FullRect);
+                var s = Sprite.Create(tex, new Rect(0, 0, W, H), pivot, ppu, 0, SpriteMeshType.FullRect);
                 s.name = name;
                 return s;
             }
@@ -125,11 +129,22 @@ namespace Darkroom
         // ---------- the girl (42x78 @ 60ppu = 0.7 x 1.3) ----------
 
         static Sprite _pIdle, _pWalkA, _pWalkB, _pJump, _pShoot, _pBlank;
+        // split rig: a body "core" (no skirt, no bun) plus standalone skirt/hair overlays
+        // that a joint can swing. The whole-figure sprites above stay for baked poses.
+        static Sprite _pBodyIdle, _pBodyWalkA, _pBodyWalkB, _pBodyJump, _pSkirt, _pHair;
 
         public static Sprite PlayerIdle { get { EnsurePlayer(); return _pIdle; } }
         public static Sprite PlayerWalkA { get { EnsurePlayer(); return _pWalkA; } }
         public static Sprite PlayerWalkB { get { EnsurePlayer(); return _pWalkB; } }
         public static Sprite PlayerJump { get { EnsurePlayer(); return _pJump; } }
+        public static Sprite PlayerBodyIdle { get { EnsurePlayer(); return _pBodyIdle; } }
+        public static Sprite PlayerBodyWalkA { get { EnsurePlayer(); return _pBodyWalkA; } }
+        public static Sprite PlayerBodyWalkB { get { EnsurePlayer(); return _pBodyWalkB; } }
+        public static Sprite PlayerBodyJump { get { EnsurePlayer(); return _pBodyJump; } }
+        /// The A-line dress as a standalone overlay, top-centre (waist) pivot so a joint swings the hem.
+        public static Sprite PlayerSkirt { get { EnsurePlayer(); return _pSkirt; } }
+        /// The hair bun as a standalone overlay, pivoted at its crown attach point so a joint swings it.
+        public static Sprite PlayerHair { get { EnsurePlayer(); return _pHair; } }
         /// Finale pose: the camera raised to her eye.
         public static Sprite PlayerShoot { get { EnsurePlayer(); return _pShoot; } }
         /// The unprinted self: the idle silhouette with no eye — a blank face,
@@ -145,6 +160,14 @@ namespace Darkroom
             _pJump = Girl("GirlJump", 16f, 25f, 10f, 16f);
             _pShoot = GirlShoot();
             _pBlank = Girl("GirlBlank", 17f, 24f, 0f, 13f, false); // idle pose, faceless
+
+            // split rig: body cores (skirt + bun lifted out into swinging overlays)
+            _pBodyIdle = GirlCore("GirlBodyIdle", 17f, 24f, 0f);
+            _pBodyWalkA = GirlCore("GirlBodyWalkA", 12f, 29f, 0f);
+            _pBodyWalkB = GirlCore("GirlBodyWalkB", 19f, 22f, 0f);
+            _pBodyJump = GirlCore("GirlBodyJump", 16f, 25f, 10f);
+            _pSkirt = GirlSkirt();
+            _pHair = GirlHair();
         }
 
         /// Idle stance, one arm raised, the camera at her eye. The lens
@@ -215,6 +238,63 @@ namespace Darkroom
             return b.ToSprite(name, 60f);
         }
 
+        /// Body "core" for the split rig: the same girl WITHOUT the A-line skirt flare and
+        /// WITHOUT the bun (those become swinging overlays). A continuous hip/torso STEM
+        /// backs the skirt — sized ~3px narrower per side than the skirt hem (hw 14) so the
+        /// overlay always covers it and the midsection never shows background when it swings.
+        static Sprite GirlCore(string name, float legL, float legR, float legLift, bool eye = true)
+        {
+            var b = new Buf(42, 78);
+
+            // legs + shoes
+            float footY = legLift;
+            b.FillRect(legL - 2f, footY, legL + 2f, footY + 20f, Body);
+            b.FillRect(legR - 2f, footY, legR + 2f, footY + 20f, Body);
+            b.FillRect(legL - 3f, footY, legL + 3f, footY + 3f, Body);
+            b.FillRect(legR - 3f, footY, legR + 3f, footY + 3f, Body);
+
+            // hip/torso stem (replaces the skirt's fill; narrower so the skirt overlay hides it)
+            b.FillTaper(21f, 16f + legLift * 0.4f, 46f, 11f, 6f, Body);
+            // torso + shoulders
+            b.FillTaper(21f, 46f, 55f, 6f, 5f, Body);
+            // arms close to the body
+            b.FillRect(14f, 28f, 17f, 50f, Body);
+            b.FillRect(25f, 28f, 28f, 50f, Body);
+            // head (the bun is a separate swinging overlay now)
+            b.FillEllipse(21f, 64f, 8.5f, 9f, Body);
+
+            b.RimLeft(Rim, 3);
+
+            if (eye) b.FillRect(24f, 62f, 27f, 65f, Eye);
+
+            return b.ToSprite(name, 60f);
+        }
+
+        /// The A-line dress as a standalone overlay. Drawn into its own buffer with the WAIST
+        /// at the top so a joint placed at the waist swings the hem. Hem half-width fixed at 14
+        /// (the walk value); the per-frame width pulse is dropped — the swing supplies the life.
+        static Sprite GirlSkirt()
+        {
+            const int W = 36, H = 34;
+            var b = new Buf(W, H);
+            // hem at local y=2 (hw 14) tapering to the waist at local y=32 (hw 6); 2px margins
+            b.FillTaper(W / 2f, 2f, 32f, 14f, 6f, Body);
+            b.RimLeft(Rim, 2);
+            return b.ToSprite("GirlSkirt", 60f, new Vector2(0.5f, 32f / H)); // pivot at the waist
+        }
+
+        /// The hair bun as a standalone overlay. Pivot is its CROWN attach point (texture (18,67)
+        /// in the full figure), NOT the bun's own centre — derived from the buffer origin so the
+        /// bun renders exactly where it sat baked in. Bun local centre (8,9); attach (13,7).
+        static Sprite GirlHair()
+        {
+            const int W = 16, H = 16;
+            var b = new Buf(W, H);
+            b.FillEllipse(8f, 9f, 4.5f, 4.5f, Body);
+            b.RimLeft(Rim, 2);
+            return b.ToSprite("GirlHair", 60f, new Vector2(13f / W, 7f / H)); // pivot at the crown attach
+        }
+
         // ---------- shadow-blob enemy (48x48 @ 60ppu = 0.8) ----------
 
         static Sprite _eAsleep, _eAwake, _eCrackle;
@@ -261,6 +341,86 @@ namespace Darkroom
             }
 
             return b.ToSprite(name, 60f);
+        }
+
+        // ---------- background figures (her subjects: workers / watchers) ----------
+        // Faceless cut-paper silhouettes (no eye baked in — the watcher's glint is added
+        // as a separate GlowMat child by BackdropFigures, like the corridor shades). Bodies
+        // use a BOTTOM-centre pivot so a figure stands on its feet line; the worker's
+        // swinging arm is a separate TOP-pivot sprite so a joint can rotate it.
+
+        static Sprite _figWorker, _figWatcher, _figArm;
+
+        public static Sprite FigureWorker { get { EnsureFigures(); return _figWorker; } }
+        public static Sprite FigureWatcher { get { EnsureFigures(); return _figWatcher; } }
+        public static Sprite FigureArm { get { EnsureFigures(); return _figArm; } }
+
+        static void EnsureFigures()
+        {
+            if (_figWorker != null) return;
+            _figWorker = Worker();
+            _figWatcher = Watcher();
+            _figArm = Arm();
+        }
+
+        /// A stooped darkroom worker in an apron and flat cap, faces right; the working
+        /// (near) arm is omitted — BackdropFigures hangs a separate swinging arm at the
+        /// shoulder. Bottom-centre pivot.
+        static Sprite Worker()
+        {
+            var b = new Buf(46, 82);
+
+            // legs + boots
+            b.FillRect(15f, 0f, 20f, 24f, Body);
+            b.FillRect(24f, 0f, 29f, 24f, Body);
+            b.FillRect(14f, 0f, 21f, 4f, Body);
+            b.FillRect(23f, 0f, 30f, 4f, Body);
+
+            // apron skirt -> waist, then torso leaning forward (centre drifts to +x as it rises)
+            b.FillTaper(22f, 22f, 50f, 11f, 8f, Body);
+            b.FillTaper(23.5f, 48f, 64f, 8f, 6f, Body);
+
+            // far-side arm hanging slack
+            b.FillRect(16f, 40f, 19f, 60f, Body);
+
+            // head bowed toward the work, with a flat cap
+            b.FillEllipse(26f, 70f, 7.5f, 8f, Body);
+            b.FillEllipse(27f, 75f, 9f, 3.6f, Body);
+
+            b.RimLeft(Rim, 3);
+            return b.ToSprite("FigWorker", 60f, new Vector2(0.5f, 0f));
+        }
+
+        /// A seated, hunched figure with arms wrapped around drawn-up knees and a bowed
+        /// head — one of her subjects, watching/grieving (Jung's shadow at rest). The faint
+        /// white eye-glint is added by BackdropFigures. Bottom-centre pivot.
+        static Sprite Watcher()
+        {
+            var b = new Buf(48, 60);
+
+            // folded legs / lap mass
+            b.FillTaper(24f, 0f, 18f, 14f, 12f, Body);
+            // hunched torso
+            b.FillTaper(24f, 16f, 44f, 11f, 8f, Body);
+            // arms wrapped around the knees
+            b.FillRect(11f, 12f, 15f, 30f, Body);
+            b.FillRect(33f, 12f, 37f, 30f, Body);
+            // bowed head
+            b.FillEllipse(24f, 46f, 8f, 8f, Body);
+
+            b.RimLeft(Rim, 3);
+            return b.ToSprite("FigWatcher", 60f, new Vector2(0.5f, 0f));
+        }
+
+        /// A single arm, shoulder (wide) at the TOP, hand at the bottom — top-centre pivot
+        /// so a joint transform can swing it from the shoulder.
+        static Sprite Arm()
+        {
+            var b = new Buf(12, 30);
+            b.FillTaper(6f, 1f, 29f, 2.0f, 3.2f, Body); // hand (bottom) narrower, shoulder (top) wider
+            b.FillEllipse(6f, 3f, 2.6f, 2.6f, Body);    // hand
+            b.RimLeft(Rim, 2);
+            return b.ToSprite("FigArm", 60f, new Vector2(0.5f, 1f));
         }
     }
 }

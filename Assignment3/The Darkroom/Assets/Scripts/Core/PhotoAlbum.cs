@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
@@ -18,6 +19,8 @@ namespace Darkroom
         const int W = 480, H = 270;
 
         readonly Texture2D[] _shots = new Texture2D[11];
+        // a SEPARATE roll: lost frames the player surfaces, never the sacred eleven
+        readonly List<Texture2D> _lost = new List<Texture2D>();
         bool _renderRequestBroken;
 
         void Awake() { Instance = this; }
@@ -29,6 +32,26 @@ namespace Darkroom
 
         public Texture2D Shot(int frame) =>
             frame >= 0 && frame < _shots.Length ? _shots[frame] : null;
+
+        // ---- lost frames: a parallel roll, captured the same proven way ----
+        public int LostCount => _lost.Count;
+        public Texture2D LostShot(int i) => i >= 0 && i < _lost.Count ? _lost[i] : null;
+
+        public void CaptureLost() { StartCoroutine(CaptureLostRoutine()); }
+
+        IEnumerator CaptureLostRoutine()
+        {
+            yield return new WaitForEndOfFrame();
+            var cam = Camera.main;
+            if (cam == null) yield break;
+            var rt = RenderTexture.GetTemporary(W, H, 24);
+            if (TryRender(cam, rt))
+            {
+                var tex = ReadAndGrade(rt);
+                if (tex != null) _lost.Add(tex);
+            }
+            RenderTexture.ReleaseTemporary(rt);
+        }
 
         public void CaptureRoom(int room, bool overwrite = false)
         {
@@ -125,6 +148,8 @@ namespace Darkroom
         {
             for (int i = 0; i < _shots.Length; i++)
                 if (_shots[i] != null) { Destroy(_shots[i]); _shots[i] = null; }
+            foreach (var t in _lost) if (t != null) Destroy(t);
+            _lost.Clear();
         }
     }
 }

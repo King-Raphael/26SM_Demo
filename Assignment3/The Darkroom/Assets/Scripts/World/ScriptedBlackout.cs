@@ -31,6 +31,9 @@ namespace Darkroom
         bool _fallArmed = true;
         bool _mainArmed = true;
         bool _running;
+        bool _resetArmed = true;   // force NORMAL once on arrival, before the drop
+        bool _catchArmed = true;   // fire the "caught by the shadow" hush once
+        bool _caught;              // the catch beat is live (lock + hush held)
 
         readonly List<Light2D> _lampLights = new List<Light2D>();
         readonly List<SpriteRenderer> _lampGlows = new List<SpriteRenderer>();
@@ -138,6 +141,31 @@ namespace Darkroom
             if (gm == null || gm.Player == null || gm.HasWon) return;
             var p = gm.Player.transform.position;
 
+            // arrive in NORMAL: the drop must be a deliberate leap into the dark, not
+            // a freebie because you crossed in from R8 still Underexposed (the shadow
+            // lift is UNDER-only — you have to CHOOSE the dark to summon it).
+            if (_resetArmed && gm.Player.IsGrounded && p.x > 125f && p.x < 127f && p.y > 8f)
+            {
+                _resetArmed = false;
+                if (ExposureManager.Instance != null) ExposureManager.Instance.ForceSet(Exposure.Normal, true);
+            }
+
+            // during the FREE-FALL, CLAMP x to the lift's span: you can drift right
+            // just enough to clear the shaft wall and settle onto the lift, but can't
+            // air-control PAST it to the corridor (the old "fly across, skip the lift"
+            // exploit). A straight drop still lands on the wall, so you must commit to
+            // the lift. Releases the instant the lift catches you (grounded).
+            if (!gm.Player.IsGrounded && p.x > 126f && p.x < ShaftMaxX && p.y > -1f && p.y < 9f)
+            {
+                const float dropMaxX = 128.8f; // lift right edge ~129.2 — stop short of the corridor
+                if (p.x > dropMaxX)
+                {
+                    var body = gm.Player.Body;
+                    var bp = body.position; bp.x = dropMaxX; body.position = bp;
+                    var v = body.linearVelocity; if (v.x > 0f) { v.x = 0f; body.linearVelocity = v; }
+                }
+            }
+
             // descent breath: wind up, camera trails the drop. Position-based
             // (not velocity) so it arms for the slow shadow-lift descent too.
             if (_fallArmed && p.x > ShaftMinX && p.x < ShaftMaxX
@@ -148,11 +176,29 @@ namespace Darkroom
                 if (_cam != null) _cam.LagScale = 2.4f;
             }
 
+            // CAUGHT: the instant the shadow takes her weight in the shaft, the
+            // world holds its breath — the rush settles to a low draught, the
+            // ambience half-ducks, and for once the slider is taken out of her
+            // hands (she can't let the light back in and drop herself). The
+            // lift's own catch-hang lands the beat; lights-out waits for the floor.
+            var em0 = ExposureManager.Instance;
+            if (_catchArmed && !_fallArmed && gm.Player.IsGrounded
+                && p.x > 126.4f && p.x < CorridorLandX && p.y > -0.5f && p.y < 4f
+                && em0 != null && em0.Current == Exposure.Underexposed)
+            {
+                _catchArmed = false;
+                _caught = true;
+                em0.SetLocked(true); // the world decides now
+                var ad = AudioDirector.Instance;
+                if (ad != null) { ad.SetWind(0.12f); ad.DuckAmbience(0.5f, 1.6f); ad.NudgeHum(0.12f, 0.8f); }
+            }
+
             // touchdown on the solid corridor starts the blackout
             if (_mainArmed && !_fallArmed && p.y < 0f && gm.Player.IsGrounded
                 && p.x > CorridorLandX && p.x < CorridorMaxX)
             {
                 _mainArmed = false;
+                _caught = false; // the blackout coroutine owns the lock + hush from here
                 _co = StartCoroutine(Run());
             }
         }
@@ -261,6 +307,7 @@ namespace Darkroom
         {
             if (!_running) return;
             _running = false;
+            _caught = false;
             SetLamps(true);
             if (LightDirector.Instance != null) LightDirector.Instance.ClearOverride();
             if (ExposureManager.Instance != null) ExposureManager.Instance.SetLocked(false);
@@ -282,6 +329,20 @@ namespace Darkroom
         /// the run must leave the set piece armed.
         void Abort()
         {
+            // a respawn cancels any in-progress drop: re-arm the arrival reset
+            _resetArmed = true;
+
+            // release a catch the blackout coroutine hasn't taken over yet: give
+            // the slider back, lift the hush, and re-arm the "caught" beat
+            if (_caught && _mainArmed)
+            {
+                _caught = false;
+                _catchArmed = true;
+                if (ExposureManager.Instance != null) ExposureManager.Instance.SetLocked(false);
+                var ad = AudioDirector.Instance;
+                if (ad != null) { ad.DuckAmbience(1f, 4f); ad.SetWind(0f); }
+            }
+
             // nothing has started: stay armed
             if (_fallArmed && _mainArmed) return;
 

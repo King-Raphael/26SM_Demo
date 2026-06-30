@@ -18,6 +18,10 @@ namespace Darkroom
         public const float HalfHeight = 0.65f;   // box is 0.7 x 1.3
 
         public bool InputEnabled = true;
+        /// Scripted horizontal drive used WHILE InputEnabled is false (cutscene auto-walk).
+        /// 0 = stand still — the default, so respawn/finale freezes are unchanged. Same units
+        /// as MoveAxis, so the normal ground ramp + walk animation just work.
+        public float ScriptedMoveX;
         public bool IsGrounded { get; private set; }
         public Rigidbody2D Body { get; private set; }
         public BoxCollider2D Box { get; private set; }
@@ -48,17 +52,30 @@ namespace Darkroom
             bc.size = new Vector2(0.7f, 1.3f);
             var mat = new PhysicsMaterial2D("PlayerFrictionless") { friction = 0f, bounciness = 0f };
             bc.sharedMaterial = mat;
+            // she throws a real moving shadow under the lamps (root is unscaled — squash is on
+            // the Visual child — so the shadow stays a steady upright box as she moves)
+            ShadowFactory.AddBoxCaster(go, new Vector2(0.7f, 1.3f));
 
             var pc = go.AddComponent<PlayerController>();
             go.AddComponent<TrailSystem>();
+            go.AddComponent<LightPaintTrail>().Init(pc); // faint light-paint trail once the Shutter is hers
             PlayerAnimator.Attach(pc);
             // the photographer's own faint glow: never fully blind in Under
             var glow = LightDirector.CreatePoint(go.transform, Vector2.zero,
                 new Color(0.92f, 0.90f, 0.84f), 2.8f, 0.35f);
-            // count this glow as puzzle-light, but with a small reach so the
-            // player alone never trips a shadowed meter — you must still draw.
+            // count this glow as puzzle-light ONLY in OVER. Under is the SAFELIGHT
+            // and Normal the work light — neither is PRINTING light, so a light
+            // meter ignores them (the most darkroom-true rule there is: you can't
+            // trip a light meter under the safelight). This keeps every meter and
+            // curtain cold in Under/Normal no matter how you climb or what dark
+            // stroke you draw — so it never half-fills and lies, and the only way
+            // to feed it is the flash. Vision is untouched: the Light2D still
+            // shines 0.35, so Under is never fully blind.
             if (LightField.Instance != null)
-                LightField.Instance.Register(glow.transform, 1.5f, () => glow.intensity);
+                LightField.Instance.Register(glow.transform, 1.5f,
+                    () => ExposureManager.Instance != null
+                          && ExposureManager.Instance.Current == Exposure.Overexposed
+                          ? glow.intensity : 0f);
             return pc;
         }
 
@@ -74,7 +91,7 @@ namespace Darkroom
         void Update()
         {
             if (PauseController.IsPaused) return;
-            if (!InputEnabled) { _moveX = 0f; _jumpBuffer = 0f; _jumpHeld = false; return; }
+            if (!InputEnabled) { _moveX = ScriptedMoveX; _jumpBuffer = 0f; _jumpHeld = false; return; }
             _moveX = DarkroomInput.MoveAxis;
             _jumpHeld = DarkroomInput.JumpHeld;
             if (DarkroomInput.JumpPressed) _jumpBuffer = JumpBufferTime;

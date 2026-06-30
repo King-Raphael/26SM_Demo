@@ -16,6 +16,8 @@ namespace Darkroom
         public Light2D ActivateLight;
         public SensorMode mode = SensorMode.GlobalOverexposed;
         public float luxThreshold = 0.6f;
+        /// Optional extra effect fired once when the sensor trips (e.g. the colour wash).
+        public System.Action onActivated;
         /// Optional readout (light meters only): an iris fill that grows + brightens
         /// as delivered light nears the threshold, so "bring light here" is legible
         /// and the additive sum is visible while drawing.
@@ -75,6 +77,7 @@ namespace Darkroom
             if (_accent != null) _accent.enabled = true;
             if (ActivateLight != null) ActivateLight.enabled = true;
             if (Door != null) Door.Open();
+            onActivated?.Invoke();
         }
     }
 }

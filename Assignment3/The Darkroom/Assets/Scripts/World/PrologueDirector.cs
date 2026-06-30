@@ -7,8 +7,8 @@ namespace Darkroom
     /// Drives the prologue's "the darkroom develops into the photo" transformation
     /// (the doc's three layers). Lowering the room to the safelight (UNDER) fades in
     /// the negative-scratch lines across the walls and lifts the red safelight glow;
-    /// raising the work light (NORMAL) fades them back. Also surfaces the
-    /// "1 — safelight" / "2 — work light" key hints once each. Prologue-only; built
+    /// raising the work light (NORMAL) fades them back. Also surfaces an up-front
+    /// "Press 1 / 2 to change the exposure" prompt + per-key confirms. Prologue-only; built
     /// by LevelBuilder.BuildPrologueProps.
     public class PrologueDirector : MonoBehaviour
     {
@@ -28,6 +28,12 @@ namespace Darkroom
         float _t;        // 0 = work light, 1 = safelight
         float _target;
         bool _keySafelightShown, _keyWorkShown;
+        // proactive switch teaching: Under is granted SILENTLY at boot (no acquire
+        // banner), so tell the player up front HOW to change the light — repeated a
+        // few times until the first time they actually do it.
+        bool _switched;
+        float _promptT = 5f;
+        int _promptsLeft = 3;
 
         void OnEnable()
         {
@@ -45,16 +51,32 @@ namespace Darkroom
         {
             bool under = e == Exposure.Underexposed;
             _target = under ? 1f : 0f;
+            if (under) _switched = true; // they found the switch — stop the prompt
 
             var hud = HUDController.Instance;
             if (hud == null) return;
-            if (under && !_keySafelightShown) { _keySafelightShown = true; hud.ShowKeyHint("1 — safelight"); }
-            else if (!under && _keySafelightShown && !_keyWorkShown) { _keyWorkShown = true; hud.ShowKeyHint("2 — work light"); }
+            if (under && !_keySafelightShown) { _keySafelightShown = true; hud.ShowKeyHint("1 — under"); }
+            else if (!under && _keySafelightShown && !_keyWorkShown) { _keyWorkShown = true; hud.ShowKeyHint("2 — normal"); }
         }
 
         void Update()
         {
             if (PauseController.IsPaused) return;
+
+            // up-front "how to change the light" prompt, repeated a few times until
+            // the player first switches (nothing else tells them the keys exist).
+            if (!_switched && _promptsLeft > 0)
+            {
+                _promptT -= Time.deltaTime;
+                if (_promptT <= 0f)
+                {
+                    _promptsLeft--;
+                    _promptT = 7f;
+                    if (HUDController.Instance != null)
+                        HUDController.Instance.ShowKeyHint("Press 1 / 2 to change the exposure");
+                }
+            }
+
             _t = Mathf.MoveTowards(_t, _target, Time.deltaTime * 2.5f);
 
             float sa = _t * ScratchMax;

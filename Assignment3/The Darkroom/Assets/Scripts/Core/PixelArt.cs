@@ -205,6 +205,223 @@ namespace Darkroom
             return _midClutter;
         }
 
+        /// Backdrop-NEAR cutouts — every `art/bn_*.png`, a closer illustrated band that
+        /// sits between the far hero scenes and the hanging clutter for layered depth.
+        /// Centre pivot (edge-feathered like the far scenes). Empty list when none exist,
+        /// so BackdropBuilder.BuildNear falls back to re-using the far scenes scaled down.
+        static List<Sprite> _near;
+        public static List<Sprite> BackdropNear(float ppu)
+        {
+            if (_near != null) return _near;
+            _near = GlobArt("bn_*.png", ppu, new Vector2(0.5f, 0.5f));
+            return _near;
+        }
+
+        /// Out-of-focus FOREGROUND cutouts — every `art/fg_*.png`, near-black framing that
+        /// sits IN FRONT of the play space (drooping cables, a print edge, an enlarger arm).
+        /// Centre pivot. Empty list when none exist, so BackdropBuilder.BuildForeground falls
+        /// back to its code-drawn silhouettes. Drop a new fg_*.png in and it auto-loads.
+        static List<Sprite> _fg;
+        public static List<Sprite> ForegroundCutouts(float ppu)
+        {
+            if (_fg != null) return _fg;
+            _fg = GlobArt("fg_*.png", ppu, new Vector2(0.5f, 0.5f));
+            return _fg;
+        }
+
+        /// A single silhouette FIGURE cutout for `kind` -> `art/char_<kind>.png` (e.g.
+        /// char_worker.png), a faceless dark silhouette per the art bible. BOTTOM-centre
+        /// pivot (0.5, 0) so the figure stands on its feet line. Returns null (cached, so we
+        /// don't re-stat every build) when absent — BackdropFigures then falls back to the
+        /// procedural puppet. Lets a dropped-in PNG stand in for the full SpriteSkin rig
+        /// with no code change (rig prefab > char_*.png cutout > code puppet).
+        static readonly Dictionary<string, Sprite> _figCache = new Dictionary<string, Sprite>();
+        public static Sprite FigureCutout(string kind, float ppu)
+        {
+            string key = kind.ToLowerInvariant();
+            if (_figCache.TryGetValue(key, out var cached)) return cached;
+            var s = LoadExternal("art/char_" + key + ".png", ppu, new Vector2(0.5f, 0f));
+            _figCache[key] = s;
+            return s;
+        }
+
+        /// Shared StreamingAssets/art glob loader: every file matching `pattern`, sorted for
+        /// deterministic order, loaded at `ppu` with `pivot`. Caches nothing itself (callers
+        /// hold the cached list); empty list on any failure so callers degrade gracefully.
+        static List<Sprite> GlobArt(string pattern, float ppu, Vector2 pivot)
+        {
+            var list = new List<Sprite>();
+            try
+            {
+                string dir = System.IO.Path.Combine(Application.streamingAssetsPath, "art");
+                if (System.IO.Directory.Exists(dir))
+                {
+                    var files = System.IO.Directory.GetFiles(dir, pattern);
+                    System.Array.Sort(files); // deterministic order
+                    foreach (var f in files)
+                    {
+                        var s = LoadExternal("art/" + System.IO.Path.GetFileName(f), ppu, pivot);
+                        if (s != null) list.Add(s);
+                    }
+                }
+            }
+            catch { /* StreamingAssets not a real dir on some platforms — fall back to none */ }
+            return list;
+        }
+
+        /// One 35mm SPROCKET cell — a near-void film base with a soft rounded
+        /// perforation — for the diegetic film-gate margins (HUDController.BuildFilmGate).
+        /// Stacked down each screen edge so the whole game reads as one frame in the gate.
+        static Sprite _sprocket;
+        public static Sprite SprocketCell
+        {
+            get
+            {
+                if (_sprocket != null) return _sprocket;
+                int w = 24, h = 40;
+                var tex = new Texture2D(w, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear };
+                var baseC = new Color32(13, 13, 16, 255);   // film base, near void
+                var holeC = new Color32(40, 40, 46, 255);   // soft backlit perforation
+                const float rx0 = 5f, rx1 = 18f, ry0 = 9f, ry1 = 30f, rad = 4f;
+                var px = new Color32[w * h];
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                    {
+                        bool hole = x >= rx0 && x <= rx1 && y >= ry0 && y <= ry1;
+                        if (hole) // round the corners
+                        {
+                            float cx = Mathf.Clamp(x, rx0 + rad, rx1 - rad);
+                            float cy = Mathf.Clamp(y, ry0 + rad, ry1 - rad);
+                            if (Mathf.Sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy)) > rad) hole = false;
+                        }
+                        px[y * w + x] = hole ? holeC : baseC;
+                    }
+                tex.SetPixels32(px); tex.Apply();
+                _sprocket = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f), 24f);
+                _sprocket.name = "SprocketCell";
+                return _sprocket;
+            }
+        }
+
+        /// A small hanging photographic PRINT — paper border + a darker photo window with a
+        /// wider bottom margin (Polaroid-style). Near-neutral so a checkpoint can tint it cool
+        /// (undeveloped negative) then develop it warm on arrival. Used by CheckpointAt.
+        static Sprite _printFrame;
+        public static Sprite PrintFrame
+        {
+            get
+            {
+                if (_printFrame != null) return _printFrame;
+                int w = 48, h = 48; // a SQUARE print
+                var tex = new Texture2D(w, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear };
+                var paper = new Color32(235, 234, 226, 255);
+                var photo = new Color32(120, 126, 140, 255);
+                var px = new Color32[w * h];
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                    {
+                        bool win = x >= 8 && x <= 40 && y >= 13 && y <= 45; // 33x33 square photo, ~13px Polaroid bottom margin
+                        px[y * w + x] = win ? photo : paper;
+                    }
+                tex.SetPixels32(px); tex.Apply();
+                _printFrame = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f), 80f);
+                _printFrame.name = "PrintFrame";
+                return _printFrame;
+            }
+        }
+
+        /// A soft, irregular, ELONGATED vapor wisp (value-noise modulated, feathered to
+        /// nothing at the edges) — for the drifting chemical haze (VaporMotes). Reads as
+        /// flowing mist, not a round dust dot.
+        static Sprite _vaporWisp;
+        public static Sprite VaporWisp
+        {
+            get
+            {
+                if (_vaporWisp != null) return _vaporWisp;
+                int w = 128, h = 64;
+                var tex = new Texture2D(w, h, TextureFormat.RGBA32, false)
+                { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                float cx = w * 0.5f, cy = h * 0.5f, rx = w * 0.5f, ry = h * 0.5f;
+                var px = new Color32[w * h];
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                    {
+                        float nx = (x - cx) / rx, ny = (y - cy) / ry;
+                        float fall = Mathf.Clamp01(1f - Mathf.Sqrt(nx * nx + ny * ny));
+                        fall *= fall; // very soft edge
+                        float n = ValueNoise(x / 13f, y / 10f, 7) * 0.6f + ValueNoise(x / 5f, y / 6f, 19) * 0.4f;
+                        float a = Mathf.Clamp01(fall * (0.3f + 0.7f * n)); // noise breaks up the blob
+                        px[y * w + x] = new Color32(255, 255, 255, (byte)(a * 255f));
+                    }
+                tex.SetPixels32(px); tex.Apply();
+                _vaporWisp = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f), 64f);
+                _vaporWisp.name = "VaporWisp";
+                return _vaporWisp;
+            }
+        }
+
+        /// A vertical gradient (opaque at the TOP edge, fading to nothing at the bottom) —
+        /// for the HUD's top scrim so the header reads on any background. White; tint via
+        /// the Image colour.
+        static Sprite _topGrad;
+        public static Sprite TopGradient
+        {
+            get
+            {
+                if (_topGrad != null) return _topGrad;
+                int h = 64;
+                var tex = new Texture2D(1, h, TextureFormat.RGBA32, false)
+                { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                var px = new Color32[h];
+                for (int y = 0; y < h; y++)
+                {
+                    float v = y / (float)(h - 1);          // 0 bottom -> 1 top
+                    float a = Mathf.SmoothStep(0f, 1f, v); // opaque toward the top
+                    px[y] = new Color32(255, 255, 255, (byte)(a * 255f));
+                }
+                tex.SetPixels32(px); tex.Apply();
+                _topGrad = Sprite.Create(tex, new Rect(0, 0, 1, h), new Vector2(0.5f, 0.5f), 64f);
+                _topGrad.name = "TopGradient";
+                return _topGrad;
+            }
+        }
+
+        /// A real-looking film/emulsion SCRATCH: a feathered hairline that WANDERS a little
+        /// and breaks up along its length (noise-modulated, tapered ends) instead of a crisp
+        /// solid stick. Vertical; stretch it to length and rotate slightly for film damage.
+        static Sprite _scratch;
+        public static Sprite FilmScratch
+        {
+            get
+            {
+                if (_scratch != null) return _scratch;
+                int w = 10, h = 160;
+                var tex = new Texture2D(w, h, TextureFormat.RGBA32, false)
+                { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                var px = new Color32[w * h];
+                for (int y = 0; y < h; y++)
+                {
+                    float fy = y / (float)(h - 1);
+                    float wander = (ValueNoise(0f, y / 24f, 3) - 0.5f) * 4f;            // slow ±2px meander
+                    float cx = w * 0.5f + wander;
+                    float taper = Mathf.SmoothStep(0f, 0.12f, fy) * (1f - Mathf.SmoothStep(0.86f, 1f, fy));
+                    float vn = ValueNoise(0f, y / 7f, 11) * 0.6f + ValueNoise(0f, y / 2.5f, 23) * 0.4f;
+                    float vmod = taper * Mathf.Clamp01(0.18f + 0.95f * vn);             // intermittent down the length
+                    for (int x = 0; x < w; x++)
+                    {
+                        float d = Mathf.Abs(x - cx);
+                        float core = Mathf.Clamp01(1f - d / 1.7f); core *= core;        // feathered ~1.7px half-width
+                        px[y * w + x] = new Color32(255, 255, 255, (byte)(Mathf.Clamp01(core * vmod) * 255f));
+                    }
+                }
+                tex.SetPixels32(px); tex.Apply();
+                _scratch = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f), 160f);
+                _scratch.name = "FilmScratch";
+                return _scratch;
+            }
+        }
+
         /// Soft lamp light cone (wide at the bottom, fading down).
         public static Sprite LightCone
         {
@@ -533,6 +750,85 @@ namespace Darkroom
                     _softGlow.name = "SoftGlow";
                 }
                 return _softGlow;
+            }
+        }
+
+        static Sprite _roundRect;
+
+        /// A white rounded-rectangle, 9-sliced so it scales without distorting its
+        /// corners — tint + stretch it for glass panels, frosted pills and rims.
+        public static Sprite RoundedRect
+        {
+            get
+            {
+                if (_roundRect == null)
+                {
+                    int n = 48, rad = 16;
+                    var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
+                    tex.filterMode = FilterMode.Bilinear;
+                    var px = new Color32[n * n];
+                    for (int y = 0; y < n; y++)
+                        for (int x = 0; x < n; x++)
+                        {
+                            // rounded-rect SDF, ~1px anti-aliased edge
+                            float qx = Mathf.Max(Mathf.Abs(x + 0.5f - n / 2f) - (n / 2f - rad), 0f);
+                            float qy = Mathf.Max(Mathf.Abs(y + 0.5f - n / 2f) - (n / 2f - rad), 0f);
+                            float d = Mathf.Sqrt(qx * qx + qy * qy) - rad;
+                            float a = Mathf.Clamp01(0.5f - d);
+                            px[y * n + x] = new Color32(255, 255, 255, (byte)(a * 255f));
+                        }
+                    tex.SetPixels32(px);
+                    tex.Apply();
+                    _roundRect = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), n, 0,
+                        SpriteMeshType.FullRect, new Vector4(rad, rad, rad, rad));
+                    _roundRect.name = "RoundedRect";
+                }
+                return _roundRect;
+            }
+        }
+
+        static Sprite _glassBar;
+
+        /// A horizontal glass rod for the slider track: a rounded capsule with a
+        /// TOP-LIT glass profile — a crisp specular highlight near the top, a faint
+        /// translucent body and a soft bottom rim. Fully NEUTRAL (greyscale; tint it
+        /// white = clear glass, no colour cast). The shading is baked in; render it
+        /// Simple at a 2:1 size so the caps + gradient stay crisp.
+        public static Sprite GlassBar
+        {
+            get
+            {
+                if (_glassBar == null)
+                {
+                    int w = 720, h = 32, rad = h / 2;
+                    var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+                    tex.filterMode = FilterMode.Bilinear;
+                    var px = new Color32[w * h];
+                    for (int y = 0; y < h; y++)
+                    {
+                        float v = (y + 0.5f) / h;            // 0 bottom .. 1 top
+                        float body = 0.10f;                  // faint translucent body
+                        float spec = 0.92f * Mathf.Exp(-Mathf.Pow((v - 0.78f) / 0.085f, 2f)); // top highlight
+                        float rim  = 0.22f * Mathf.Exp(-Mathf.Pow((v - 0.16f) / 0.11f, 2f));   // bottom edge
+                        float a = Mathf.Clamp01(body + spec + rim);
+                        float bright = Mathf.Lerp(0.80f, 1f, Mathf.SmoothStep(0f, 1f, v)); // top-lit, neutral
+                        byte cb = (byte)(bright * 255f);
+                        for (int x = 0; x < w; x++)
+                        {
+                            // horizontal stadium (capsule): rounded ends, flat middle
+                            float qx = Mathf.Max(Mathf.Abs(x + 0.5f - w / 2f) - (w / 2f - rad), 0f);
+                            float qy = Mathf.Abs(y + 0.5f - h / 2f);
+                            float d = Mathf.Sqrt(qx * qx + qy * qy) - rad;
+                            float mask = Mathf.Clamp01(0.5f - d);
+                            px[y * w + x] = new Color32(cb, cb, cb, (byte)(a * mask * 255f));
+                        }
+                    }
+                    tex.SetPixels32(px);
+                    tex.Apply();
+                    _glassBar = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f), h, 0, SpriteMeshType.FullRect);
+                    _glassBar.name = "GlassBar";
+                }
+                return _glassBar;
             }
         }
 

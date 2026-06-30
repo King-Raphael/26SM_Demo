@@ -129,8 +129,8 @@ namespace Darkroom
                 && Mathf.Abs(gm.Player.transform.position.x - transform.position.x) < 14f;
             if (_stateInitialized && ad != null && nearPlayer)
             {
-                if (!wasAwake && _isAwake) ad.PlayEnemyWake();
-                else if (wasAwake && !_isAwake && !gm.IsRespawning) ad.PlayEnemyFreeze();
+                if (!wasAwake && _isAwake) ad.PlayEnemyWake(transform.position.x);
+                else if (wasAwake && !_isAwake && !gm.IsRespawning) ad.PlayEnemyFreeze(transform.position.x);
             }
             _stateInitialized = true;
         }

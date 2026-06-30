@@ -32,7 +32,34 @@ namespace Darkroom
         AudioSource _music;
         bool _musicLoaded;
         public float MusicVolume = 0.20f;
+        // per-exposure low-pass on the music: Under muffled (sheltered) -> Over open (exposed)
+        AudioLowPassFilter _musicLP;
+        float _musicCut = 22000f, _musicCutTarget = 22000f;
+        // predatory shade layer: a dissonant drone gated to OVER only (Under stays "sleeping stone")
+        AudioSource _threat;
+        float _threatTarget;
+        // developing leitmotif: a fragile phrase that reveals one more note every ~2 frames,
+        // with a warm harmony pad fading in mid-roll — fullest only near the self-portrait.
+        AudioSource _motif, _motifPad;
+        AudioClip[] _motifNotes;
+        int _motifStage, _motifIndex;
+        float _motifTimer;
+        static readonly float[] MotifPhrase = { 220.00f, 261.63f, 329.63f, 293.66f, 261.63f }; // A C E D C — gentle arch
         readonly System.Random _rng = new System.Random(20260611);
+
+        // spatial pass: ONE reverb filter on this GameObject wets every source on it at once
+        // (the music child is excluded, stays dry). Positional one-shots pan on their own bus
+        // so a door/lift pan never bleeds into the centered UI/voice sounds sharing _sfx.
+        AudioSource _pos;
+        AudioReverbFilter _reverb;
+        Camera _cam;
+        const float PanAmount = 0.6f;
+        float _liftX = float.NaN, _burnX = float.NaN;
+        // reverb space (mB room / s decay / hf ratio), glided per room: tight darkroom default,
+        // open+hollow for the R9 shaft, intimate for the prologue pocket. dryLevel stays 0.
+        float _revRoom = -2200f, _revRoomT = -2200f;
+        float _revDecay = 0.6f, _revDecayT = 0.6f;
+        float _revHF = 0.55f, _revHFT = 0.55f, _revSpeed = 1f;
 
         // Single owner of the ambience level: every bed (room tone, hum, hiss)
         // is scaled by one duck factor so scripted moments can't fight each other.
@@ -119,8 +146,31 @@ namespace Darkroom
             _mood = NewSource(true);    _mood.clip = BuildMoodDrone();      _mood.volume = 0f; _mood.Play();
             _preview = NewSource(true); _preview.clip = BuildPreviewTone();  _preview.volume = 0f; _preview.Play();
             _charge = NewSource(true);  _charge.clip = BuildChargeTone();   _charge.volume = 0f; _charge.Play();
+            _threat = NewSource(true);  _threat.clip = BuildThreatDrone();  _threat.volume = 0f; _threat.Play();
+            _motif = NewSource(false);  // soft struck-tone notes, played one at a time by UpdateMotif
+            _motifNotes = new AudioClip[MotifPhrase.Length];
+            for (int i = 0; i < MotifPhrase.Length; i++) _motifNotes[i] = BuildTone(MotifPhrase[i]);
+            _motifPad = NewSource(true); _motifPad.clip = BuildMotifPad(); _motifPad.volume = 0f; _motifPad.Play();
             _expSfx = NewSource(false); // the exposure-switch click, pitched per target state
-            _music = NewSource(true);   _music.volume = 0f;                 // clip loaded async in Start()
+            _pos = NewSource(false);    // positional one-shots pan here (kept off the centered _sfx)
+
+            // one reverb on the main GameObject wets every source on it at once; the music
+            // child is excluded (stays dry). User preset unlocks the custom room/decay params.
+            _reverb = gameObject.AddComponent<AudioReverbFilter>();
+            _reverb.reverbPreset = AudioReverbPreset.User;
+            _reverb.dryLevel = 0f;        // additive — never reduce the dry mix
+            _reverb.room = _revRoom;
+            _reverb.decayTime = _revDecay;
+            _reverb.decayHFRatio = _revHF;
+
+            // music on its OWN child so a low-pass can muffle it per exposure without
+            // touching the crisp one-shots (which all live on the main GameObject)
+            var musicGO = new GameObject("Music");
+            musicGO.transform.SetParent(transform, false);
+            _music = musicGO.AddComponent<AudioSource>();
+            _music.playOnAwake = false; _music.loop = true; _music.spatialBlend = 0f; _music.volume = 0f;
+            _musicLP = musicGO.AddComponent<AudioLowPassFilter>();
+            _musicLP.cutoffFrequency = _musicCut;
 
             _burnThrough = BuildBurnThrough();
             _umbraOpen   = BuildUmbraOpen();
@@ -169,8 +219,13 @@ namespace Darkroom
                               : e == Exposure.Overexposed ? 1.08f : 1.0f;
                 _expSfx.PlayOneShot(_click, 0.5f);
             }
-            _humTarget = e == Exposure.Underexposed ? 0.22f : 0f;
-            _hissTarget = e == Exposure.Overexposed ? 0.12f : 0f;
+            _humTarget = e == Exposure.Underexposed ? 0.30f : 0f;
+            _hissTarget = e == Exposure.Overexposed ? 0.17f : 0f;
+            // music breathes closed in Under (sheltered), wide open in Over (exposed)
+            // — NOTE this only bites if a background-music file exists in StreamingAssets/music
+            _musicCutTarget = e == Exposure.Underexposed ? 900f : e == Exposure.Overexposed ? 22000f : 5000f;
+            // the predatory shade layer is heard ONLY in Over (procedural, always present)
+            _threatTarget = e == Exposure.Overexposed ? 0.16f : 0f;
         }
 
         void Update()
@@ -182,6 +237,13 @@ namespace Darkroom
             _draw.volume = Mathf.MoveTowards(_draw.volume, _drawTarget, Time.deltaTime * 3f);
             _wind.volume = Mathf.MoveTowards(_wind.volume, _windTarget, Time.deltaTime * 0.9f);
             _fan.volume = Mathf.MoveTowards(_fan.volume, _fanTarget * _duck, Time.deltaTime * 0.8f);
+
+            // music low-pass glides with the exposure (sheltered Under <-> exposed Over)
+            _musicCut = Mathf.MoveTowards(_musicCut, _musicCutTarget, Time.deltaTime * 16000f);
+            if (_musicLP != null) _musicLP.cutoffFrequency = _musicCut;
+            // the predatory shade layer (Over only), part of the ducked ambience bed
+            _threat.volume = Mathf.MoveTowards(_threat.volume, _threatTarget * _duck, Time.deltaTime * 0.7f);
+            UpdateMotif(Time.deltaTime);
 
             // pedal rises with x through the final room — too slow to notice
             // arriving, impossible to miss when it stops
@@ -199,9 +261,11 @@ namespace Darkroom
             // burn: max-request consumed each frame (requesters are Update-driven,
             // so a 1-frame-stale read is fine — no FixedUpdate gutter risk)
             _burn.volume = Mathf.MoveTowards(_burn.volume, _burnReq, Time.deltaTime * 2.5f);
+            SetPan(_burn, _burn.volume > 0.001f ? _burnX : float.NaN);
             _burnReq = 0f;
             // lift: edge-driven on/off (requesters are in FixedUpdate)
             _lift.volume = Mathf.MoveTowards(_lift.volume, _liftActive ? 0.09f : 0f, Time.deltaTime * 4f);
+            SetPan(_lift, _liftActive ? _liftX : float.NaN);
             // mood + charge are part of the ambience bed: they duck with everything else
             _mood.volume = Mathf.MoveTowards(_mood.volume, _moodTarget * _duck, Time.deltaTime * 0.5f);
             _mood.pitch  = Mathf.MoveTowards(_mood.pitch, _moodPitch, Time.deltaTime * 0.6f);
@@ -234,6 +298,39 @@ namespace Darkroom
                 if (gm != null && (gm.IsCinematic || gm.HasWon)) mt = 0f;
                 _music.volume = Mathf.MoveTowards(_music.volume, mt, Time.deltaTime * 0.3f);
             }
+
+            // reverb space glides toward the per-room target; the finale collapses the tail
+            // so the held-breath silence stays absolute
+            if (_reverb != null)
+            {
+                if (gm != null && gm.HasWon) { _revRoomT = -10000f; _revDecayT = 0.1f; }
+                _revRoom = Mathf.MoveTowards(_revRoom, _revRoomT, Time.deltaTime * 700f * _revSpeed);
+                _revDecay = Mathf.MoveTowards(_revDecay, _revDecayT, Time.deltaTime * 0.9f * _revSpeed);
+                _revHF = Mathf.MoveTowards(_revHF, _revHFT, Time.deltaTime * 0.18f * _revSpeed);
+                _reverb.room = _revRoom;
+                _reverb.decayTime = _revDecay;
+                _reverb.decayHFRatio = _revHF;
+            }
+        }
+
+        /// Pan a one-shot/bed by world x relative to the camera. NaN = centred. panStereo is
+        /// constant-power balance of mono clips, so it folds down cleanly (no phase issues).
+        void SetPan(AudioSource s, float worldX)
+        {
+            if (float.IsNaN(worldX)) { s.panStereo = 0f; return; }
+            if (_cam == null) _cam = Camera.main;
+            float half = _cam != null ? _cam.orthographicSize * _cam.aspect : 0f;
+            if (half < 0.01f) { s.panStereo = 0f; return; }
+            s.panStereo = Mathf.Clamp((worldX - _cam.transform.position.x) / half, -1f, 1f) * PanAmount;
+        }
+
+        /// Switch the room reverb character (mB room / s decay / hf ratio). Glided over ~1–2s.
+        public void SetReverbSpace(float room, float decayTime, float decayHFRatio, float speed = 1f)
+        {
+            _revRoomT = room;
+            _revDecayT = decayTime;
+            _revHFT = decayHFRatio;
+            _revSpeed = Mathf.Max(0.05f, speed);
         }
 
         /// The held breath before the final photograph.
@@ -332,7 +429,7 @@ namespace Darkroom
         /// The win screen's slow print-surfacing swell.
         public void PlayDevelopLong() { _sfx.PlayOneShot(_developLong, 0.45f); }
         public void PlayCheckpoint() { _sfx.PlayOneShot(_checkpoint, 0.32f); }
-        public void PlayDoor() { _sfx.PlayOneShot(_door, 0.55f); }
+        public void PlayDoor(float worldX = float.NaN) { SetPan(_pos, worldX); _pos.PlayOneShot(_door, 0.55f); }
         /// The roll ratchets forward: the oldest stroke is wound away.
         public void PlayFilmAdvance() { _sfx.PlayOneShot(_advance, 0.4f); }
         /// The moment a drawn stroke fixes — a bright, higher "set" blip, distinct
@@ -353,26 +450,30 @@ namespace Darkroom
 
         /// Burning paper heat bed — each BurnPaper requests its char level every
         /// frame; the loudest wins and the bed falls silent when none is heating.
-        public void RequestBurn(float level01) { _burnReq = Mathf.Max(_burnReq, Mathf.Clamp01(level01) * 0.10f); }
+        public void RequestBurn(float level01, float worldX = float.NaN)
+        {
+            float v = Mathf.Clamp01(level01) * 0.10f;
+            if (v > _burnReq) { _burnReq = v; _burnX = worldX; } // loudest requester also wins the pan
+        }
         /// Paper burns through: a rising whoosh + spark.
-        public void PlayBurnThrough() { _sfx.PlayOneShot(_burnThrough, 0.7f); }
+        public void PlayBurnThrough(float worldX = float.NaN) { SetPan(_pos, worldX); _pos.PlayOneShot(_burnThrough, 0.7f); }
 
         /// A lift is carrying the player: bright/high pitch for the rising light
         /// slab, dark/low for the sinking shadow slab. Off when it stops moving.
         /// (One shared bed: this level never rides two lifts at once.)
-        public void LiftOn(float pitch) { _liftActive = true; _lift.pitch = pitch; }
+        public void LiftOn(float pitch, float worldX = float.NaN) { _liftActive = true; _lift.pitch = pitch; _liftX = worldX; }
         public void LiftOff() { _liftActive = false; }
 
         /// Shadow recoils from delivered light (open) and floods back (reseal).
-        public void PlayUmbraOpen() { _sfx.PlayOneShot(_umbraOpen, 0.5f); }
-        public void PlayUmbraSeal() { _sfx.PlayOneShot(_umbraSeal, 0.5f); }
+        public void PlayUmbraOpen(float worldX = float.NaN) { SetPan(_pos, worldX); _pos.PlayOneShot(_umbraOpen, 0.5f); }
+        public void PlayUmbraSeal(float worldX = float.NaN) { SetPan(_pos, worldX); _pos.PlayOneShot(_umbraSeal, 0.5f); }
 
         /// A latent platform is printed permanently — a warm "set".
-        public void PlayFixPlatform() { _sfx.PlayOneShot(_fixPlatform, 0.45f); }
+        public void PlayFixPlatform(float worldX = float.NaN) { SetPan(_pos, worldX); _pos.PlayOneShot(_fixPlatform, 0.45f); }
 
         /// The guard wakes (a menacing swell) / freezes to stone (brittle crackle).
-        public void PlayEnemyWake() { _sfx.PlayOneShot(_enemyWake, 0.5f); }
-        public void PlayEnemyFreeze() { _sfx.PlayOneShot(_enemyFreeze, 0.4f); }
+        public void PlayEnemyWake(float worldX = float.NaN) { SetPan(_pos, worldX); _pos.PlayOneShot(_enemyWake, 0.5f); }
+        public void PlayEnemyFreeze(float worldX = float.NaN) { SetPan(_pos, worldX); _pos.PlayOneShot(_enemyFreeze, 0.4f); }
 
         /// A new frame on the roll: a delicate ceremonial sparkle.
         public void PlayFrameCardChime() { _sfx.PlayOneShot(_frameCard, 0.2f); }
@@ -383,6 +484,7 @@ namespace Darkroom
         /// hum's pitch stack. Room 9 (the drop) is left to the scripted blackout.
         public void SetRoomMood(int room)
         {
+            _motifStage = Mathf.Max(_motifStage, room); // the theme develops as the roll advances; never un-develops
             switch (room)
             {
                 case 1:  _moodTarget = 0.03f;  _moodPitch = 1.00f; break;
@@ -397,6 +499,10 @@ namespace Darkroom
                 case 10: _moodTarget = 0.06f;  _moodPitch = 0.88f; break;
                 default: _moodTarget = 0f;     _moodPitch = 1.00f; break; // prologue / unknown
             }
+            // reverb space follows the room: open/hollow shaft, intimate prologue, tight elsewhere
+            if (room == 9)      SetReverbSpace(-1400f, 1.6f, 0.75f); // shaft/corridor: long, hollow
+            else if (room <= 0) SetReverbSpace(-2600f, 0.9f, 0.5f);  // prologue pocket: close, slightly long
+            else                SetReverbSpace(-2200f, 0.6f, 0.55f); // darkroom: small, tiled, short tail
         }
 
         /// A soft sustained tone while holding to preview an exposure (pitched by
@@ -950,6 +1056,94 @@ namespace Darkroom
                       + 0.12f * Mathf.Sin(2f * Mathf.PI * 98f * t)) * 0.5f;
             }
             return ToClip("mood_drone", d);
+        }
+
+        /// The predatory shade layer (OVER only): a low DISSONANT drone — a minor-second
+        /// beat (58/61.4 Hz) under a tritone-ish high partial (174 Hz) + a slow breathing
+        /// LFO — unease, not a jump-scare. 2 s buffer, near-integer cycles for a soft seam.
+        AudioClip BuildThreatDrone()
+        {
+            int n = SR * 2;
+            var d = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)SR;
+                float lfo = 0.75f + 0.25f * Mathf.Sin(2f * Mathf.PI * 0.5f * t); // slow swell
+                float v = 0.40f * Mathf.Sin(2f * Mathf.PI * 58f * t)
+                        + 0.32f * Mathf.Sin(2f * Mathf.PI * 61.4f * t)  // sub beat (rooms/headphones)
+                        + 0.18f * Mathf.Sin(2f * Mathf.PI * 174f * t)
+                        + 0.20f * Mathf.Sin(2f * Mathf.PI * 220f * t)   // audible MID (laptop speakers)
+                        + 0.11f * Mathf.Sin(2f * Mathf.PI * 233f * t);  // dissonant against the 220 = dread
+                d[i] = Mathf.Clamp(v * lfo, -1f, 1f) * 0.5f;
+            }
+            return ToClip("threat_drone", d);
+        }
+
+        /// The developing leitmotif sequencer: plays the phrase one note at a time on a
+        /// slow loop, revealing more of it as the roll advances (1 note in Frame 1 -> the
+        /// full 5-note phrase by the late frames), with a harmony pad fading in mid-roll and
+        /// the rests shortening so it grows more present. Soft + ducked; silent in the
+        /// prologue / cinematics / win. (STORY §3 — ration the theme, fullest at the end.)
+        void UpdateMotif(float dt)
+        {
+            if (_motif == null) return;
+            var gm = GameManager.Instance;
+            bool active = _motifStage >= 1 && gm != null && !gm.HasWon && !gm.IsCinematic && !gm.IsRespawning;
+
+            float padTarget = active ? Mathf.Clamp01((_motifStage - 4) / 6f) * 0.05f : 0f; // joins ~frame 5
+            _motifPad.volume = Mathf.MoveTowards(_motifPad.volume, padTarget * _duck, dt * 0.5f);
+
+            if (!active) return;
+            _motifTimer -= dt;
+            if (_motifTimer > 0f) return;
+
+            int revealed = Mathf.Clamp(1 + (_motifStage - 1) / 2, 1, MotifPhrase.Length); // +1 note ~every 2 frames
+            if (_motifIndex < revealed)
+            {
+                float vol = 0.10f * _duck * (0.45f + 0.55f * _motifStage / 11f);
+                _motif.PlayOneShot(_motifNotes[_motifIndex], vol);
+                _motifIndex++;
+                _motifTimer = 0.72f; // gap between notes of the phrase
+            }
+            else
+            {
+                _motifIndex = 0;
+                _motifTimer = 5.5f - Mathf.Clamp01(_motifStage / 11f) * 2.5f; // rests shorten as it develops
+            }
+        }
+
+        /// A soft struck tone (music-box / glass): soft attack, gentle decay, a couple of
+        /// fast-decaying harmonics. One per motif note.
+        AudioClip BuildTone(float freq)
+        {
+            int n = (int)(SR * 1.4f);
+            var d = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)SR;
+                float env = Mathf.Clamp01(t / 0.02f) * Mathf.Exp(-t * 3.0f);
+                float v = Mathf.Sin(2f * Mathf.PI * freq * t)
+                        + 0.35f * Mathf.Sin(2f * Mathf.PI * freq * 2f * t) * Mathf.Exp(-t * 5f)
+                        + 0.12f * Mathf.Sin(2f * Mathf.PI * freq * 3f * t) * Mathf.Exp(-t * 7f);
+                d[i] = Mathf.Clamp(v * env, -1f, 1f) * 0.5f;
+            }
+            return ToClip("motif_" + (int)freq, d);
+        }
+
+        /// Warm harmony pad under the motif: A3 + E4 + A4 (220/330/440 Hz — integer cycles
+        /// over 2 s, seamless), kept off the 55 Hz hum stack so it stays clear, not boomy.
+        AudioClip BuildMotifPad()
+        {
+            int n = SR * 2;
+            var d = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)SR;
+                d[i] = (0.5f * Mathf.Sin(2f * Mathf.PI * 220f * t)
+                      + 0.3f * Mathf.Sin(2f * Mathf.PI * 330f * t)
+                      + 0.16f * Mathf.Sin(2f * Mathf.PI * 440f * t)) * 0.4f;
+            }
+            return ToClip("motif_pad", d);
         }
 
         /// A soft sustained sine (+ a quiet fifth), pitched per exposure state for

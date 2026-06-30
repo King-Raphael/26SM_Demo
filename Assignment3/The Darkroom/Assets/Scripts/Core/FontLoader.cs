@@ -51,5 +51,31 @@ namespace Darkroom
                 return _display;
             }
         }
+
+        static Font _title;
+
+        /// Title face for the room name — a cursive/script hand so the LEVEL NAME
+        /// reads as a title, not UI. Priority: bundled (Resources/Fonts/Title) -> a
+        /// script OS face (Snell Roundhand / Apple Chancery / Segoe Script…) -> Display.
+        public static Font Title
+        {
+            get
+            {
+                if (_title != null) return _title;
+                _title = Resources.Load<Font>("Fonts/Title");
+                if (_title == null)
+                {
+                    string[] faces = { "Snell Roundhand", "Apple Chancery", "Zapfino", "Segoe Script", "Brush Script MT", "Bradley Hand ITC" };
+                    foreach (var f in faces)
+                    {
+                        try { _title = Font.CreateDynamicFontFromOSFont(f, 48); }
+                        catch { _title = null; }
+                        if (_title != null) break;
+                    }
+                }
+                if (_title == null) _title = Display;
+                return _title;
+            }
+        }
     }
 }

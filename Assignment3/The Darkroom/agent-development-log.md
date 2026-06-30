@@ -1974,3 +1974,1863 @@ Doc delivered. No engine impact; nothing to compile or validate. Not committed.
 
 ### Student Follow-up
 (Hand `STORY_CONCEPT.md` — or just the §7 "Hand-off prompt" code block — to Claude Design. Everything is grounded in what's already shipped, so it reads as "name why each choice works + where to push," not a redesign. Key levers if the teacher wants emphasis: the §6 frame table is the fastest read of the whole story; the reference tables are all real and dated for citation. Nothing in the game changed.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 73 — Raw Interaction Log
+
+**Time:** 2026-06-23
+**Development Stage:** "The roll finishes developing" — richer, not longer (Milestone 20)
+**Current Goal:** Student asked whether eleven frames is too short / not rich enough, and to add elements — "something from Unity's side, not just relying on the scripts." Decided NOT to lengthen the roll (kept 11), and to DEEPEN it along three composed threads the student chose: a recontextualizing late beat (colour), secrets + a darkroom hub, and Unity-side production.
+
+### Student Prompt
+will eleven frames be too short? I still feel the content is not rich enough. Or think about what elements can add. I can also add something from the Unity's side, not just relying on the scripts or the codes. (Chose: emphasis = recontextualizing late beat + secrets/hub + Unity-side production; left the roll at 11.)
+
+### Agent Response Summary
+Diagnosed first (3 deep designers, each grounded in the code, → adversarial feasibility/scope critique → synthesis). Reframed "too short" as DENSITY, not duration, and found a unifying through-line: the run has been an UNDEVELOPED roll, so richness = letting more of it **develop**. The same word now drives all three threads.
+
+**D1 — Colour, the recontextualizing beat (MVP + the in-world R10 "wash" verb).**
+- *MVP (`UI/WinScreen.cs`):* the self-portrait develops from a cold blue-grey to a warm, saturated tint over the last ~0.8s of the 1.9s develop (chroma held back so it BLOOMS, not fades); the bookend latent ghost is nudged cold so the warm-up reads. The whole monochrome roll re-reads as "undeveloped; only the frame with her in it develops in colour."
+- *FULL (the wash as a VERB):* a doorless LocalLux "wash tray" by the R10 exit (`R10_WashTray`, threshold 0.4 > the player's own glow so only a drawn stroke trips it), reusing the proven LocalLux idiom. Lay a bright stroke on it → `PostFXDirector.BeginColorWash()` floods the world with colour (a persistent saturation-positive + filter-neutralising layer applied ON TOP of the exposure grade AND the finale flare, so frame 11 is captured in colour intentionally) AND `GameManager.DoColorWash()` unseals the exit (`LevelExit.RequiresWash`). Colour is the last verb she spends. Added a generic `onActivated` hook to `PhotoSensor` so the builder attaches the bloom to that one meter; the finale capture stays correct because the wash precedes BeginFinale.
+
+**D2 — Secrets + darkroom hub (4 lost frames + gallery).** New `LostDef`/`lostFrames[]` on RoomDef mirroring `FixDef`; a `Lost()` builder modeled on `Latent()` (exactly ONE root child); `LostFrame.cs` trigger → captures into a SEPARATE `PhotoAlbum._lost` list (the sacred `_shots[11]` + the 11-slot contact strip are untouched by construction), bumps `GameManager.LostFound`, sparkle + develop sound + a "LOST FRAME DEVELOPED n/total" note. Four verb-gated pockets, one per verb — Under (R1, above the dark trail), draw (R5, above the pad), Over (R8, above the light bridge), print (R10, above the latent span). A live darkroom GALLERY rebuilt in the pause panel each time it opens; a "you kept N you'd forgotten." coda under the win screen. Named "lost frame" NOT "negative" (collision with the Under-unlock banner / R8's name).
+
+**D3 — Unity-side: a hand-written develop shader.** `Assets/Resources/SpriteDevelop.shader` — a URP-2D unlit sprite shader (ShaderLab/HLSL, not Shader Graph) with a `_Develop` (0..1) noise-thresholded dissolve + a warm halation front, `Fallback "Sprites/Default"`. Exposed via a guarded `VisualFactory.DevelopMat` (Shader.Find + new Material; returns null if absent → never pink), driven 0→1 through a `MaterialPropertyBlock` in `PlayerAnimator.DevelopRoutine` so the most-seen beat in the game — the respawn "burned print re-develops" — becomes a chemical-bath wipe instead of a flat alpha fade. Verified the hybrid is clean: 59 renderers assign their material from VisualFactory, and `Assets/Resources/` already exists (FontLoader proves Resources.Load), so an authored material drops in via the existing pattern.
+
+### Files / Mechanics Changed
+`UI/WinScreen.cs` (colour develop + lost coda), `Core/PostFXDirector.cs` (BeginColorWash + persistent wash layer + reset), `Core/GameManager.cs` (ExitWashed/DoColorWash, LostFound, resets), `World/PhotoSensor.cs` (onActivated hook), `World/LevelExit.cs` (RequiresWash seal), `Core/PhotoAlbum.cs` (_lost list + CaptureLost/LostShot + Clear), `World/LostFrame.cs` (NEW), `Level/LevelData.cs` (LostDef + lostFrames + LostFrameTotal; SensorDef.wash variant; 4 lost-frame placements; R10 wash tray + hint), `Level/LevelBuilder.cs` (Lost() builder + loop; wash-sensor branch; exit RequiresWash), `Core/VisualFactory.cs` (DevelopMat), `Player/PlayerAnimator.cs` (shader-driven develop), `Assets/Resources/SpriteDevelop.shader` (NEW), `UI/HUDController.cs` (ShowLostFrame + pause gallery), `Editor/DarkroomValidator.cs` (lostFrames==4, sensors 3→4, hints 18→19, wash-sensor door-resolve skip, defChildren += lostFrames). Two new files have hand-made metas.
+
+### Deferred / Cut (with reason)
+2D skeletal rig (lowest impact/hour, breaks the procedural-character identity), Timeline (can't bind to runtime-created objects), VFX Graph (not installed; URP-2D-fragile — Shuriken is the fallback if FX is wanted), Cinemachine vcam, second-exposure routes, completionist score. Authored field-recording ambience is near-free (clone `AudioDirector.LoadMusic` for a `/ambience` folder) and can slot in anytime.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`) after every stage and all together. Every validator literal re-derived from the data and matched (lost frames 4, sensors 4, hints 19, latent 3, umbrals 2, doors 3, DarkPath 7); each new builder makes exactly ONE root child so the object-count cross-check stays balanced. Batchmode validator NOT run (Editor open / lockfile present). **Shader render-correctness is the one thing the offline check can't confirm — it's an in-editor verification; the guarded null/Fallback path means a compile/strip failure degrades to the old alpha fade, never pink.** Not committed.
+
+### Student Follow-up
+(⌘R then ⌘P. Win screen: the self-portrait now warms into colour while the cold contact strip stays undeveloped. Respawn anywhere: the print should re-develop as a grainy dissolve (if it looks like a plain fade, the shader didn't compile — check the Console; it's safe either way). Hidden LOST FRAMES — Under above R1's trail, draw above R5's pad, Over above R8's light bridge, print above R10's latent slab; pause (Esc) to see the darkroom gallery fill; the win screen adds "you kept N you'd forgotten." R10 ending: past the guard, go OVER and lay a bright stroke on the wash tray by the exit — colour floods the world and the door unseals (the exit does nothing until you do). Things to feel-check / tune in-engine: the develop shader's look (grain scale / halation in `Resources/SpriteDevelop.shader`); the 4 lost-frame pockets' REACHABILITY (verify each needs its verb and never blocks the path — dev-warp `[` `]`); the wash-tray threshold 0.4 and its position 173 past the guard at 171.5 (raise/move if the awake guard makes it unfair); whether the colour reveal reads as clearly distinct from the existing warm finale flare. Run the batchmode validator once the Editor is closed. Cut anything that doesn't land — every piece degrades gracefully.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 74 — Raw Interaction Log
+
+**Time:** 2026-06-23
+**Development Stage:** Playtest fixes — the "purple door" + the R9 drop (Milestone 20.1)
+**Current Goal:** Three pieces of playtest feedback: (1) the drawn-light-trail "purple door" reads strange — redesign it; (2) reset to Normal on arriving at R9 so the drop isn't trivial when you cross in still Underexposed; (3) stop horizontal air-control during the R9 free-fall so you can't fly across the void and skip the lift.
+
+### Student Prompt
+the light trail to activate the purple door seems a little bit strange, redesign the purple door as something else. And at R9(the jumping elevator), reset the status to normal before jumping or it will be too easy to jump down because the previous status might be underexposed. And do not let the user to move right while dropping, otherwise the user can just fly to the right without the elevator. (Chose: purple door → "walk through it in Over".)
+
+### Agent Response Summary
+- **Purple door → BLACKOUT CURTAIN (student chose "walk through in Over").** Rewrote `LevelBuilder.Umbral()`: dropped the light-driven `UmbralBarrier` + LightField + the roiling violet emulsion, and rebuilt it as a cold-dark hung curtain backed by a standard `ExposureObject` of type `BrightBarrier` — solid in Under/Normal, washed OPEN (passable + faded) in Over. No drawn trail; flood it with light (3) and step through. The existing exposure jam-rule prevents re-solidifying it on the player, so no custom anti-crush guard is needed. Both instances convert (R9 curtain debut + R10 reprise); hints + data comments rewritten ("flood it in Over and step through"). `UmbralBarrier.cs` + `AudioDirector.PlayUmbraOpen/Seal` are now dead code (left in place, harmless). Validator UNCHANGED: the `umbrals[]` data array is the same (count still 2), and the curtain isn't a `BoxDef`, so `barriers == 0` still holds and the object count stays balanced (one root child, as before).
+- **R9 reset to Normal (`World/ScriptedBlackout.cs`).** A one-shot `_resetArmed`: when the player is grounded on the arrival ledge (x 125–127, y > 8), `ExposureManager.ForceSet(Normal, silent)` fires once. Coming in from R8's Under-only dark bridge no longer pre-arms the (Under-only) shadow lift — you must CHOOSE the dark to summon it. Re-armed on every respawn (`Abort`).
+- **No fly-across during the drop (`World/ScriptedBlackout.cs`).** During the free-fall the player's x is CLAMPED to the lift's span (≤128.8; lift right edge ~129.2): you can still drift right enough to clear the shaft wall and settle onto the lift, but you can't air-control PAST it to the corridor (the old skip-the-lift exploit). A full horizontal LOCK was tried first and reverted — the shaft wall (x125.8–126.8, top 8.5) sits directly under the ledge's right edge, so a player who can't move right just lands on the wall instead of the void; the drop REQUIRES a small rightward drift, hence a clamp, not a lock. Releases the instant the lift catches you (grounded).
+
+### Files / Mechanics Changed
+`Level/LevelBuilder.cs` (Umbral → blackout-curtain BrightBarrier), `Level/LevelData.cs` (R9 + R10 umbral hints + comments), `World/ScriptedBlackout.cs` (arrival reset-to-Normal + free-fall x-clamp + Abort re-arm). No new files; no validator literal changes.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`); `AddComponent<UmbralBarrier>` refs now 0. Not committed.
+
+### Student Follow-up
+(⌘R then ⌘P. R9: arriving from R8 you snap to Normal at the ledge — the way down only appears when you choose Under; mid-drop you can still nudge right onto the lift but can't fly past it to the corridor. The two "purple doors" (top of R9's stairs, and mid-R10) are now cold blackout curtains — switch to Over (3) and walk through; no more drawing a trail. Feel-checks: that the R9 reset-to-Normal doesn't feel abrupt (it's silent — say if you'd prefer the shutter-click feedback); that the curtain reads clearly as solid-then-open between Normal and Over; in R10 the curtain is intentionally soft since you're often already in Over — say the word if you'd rather it be removed there. `UmbralBarrier.cs` is now unused dead code — safe to delete in a cleanup pass.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 75 — Raw Interaction Log
+
+**Time:** 2026-06-23
+**Development Stage:** Onboarding + one consistent vocabulary (Milestone 20.2)
+**Current Goal:** Two pieces of feedback: (1) the start lacks any instruction for HOW to switch exposure; (2) the mode names change mid-game — keep them the same. Student chose ONE consistent set: UNDER / NORMAL / OVER everywhere.
+
+### Student Prompt
+the beginning part seems to lack the instruction of how to switch between the different exposure modes. And the name of modes would be better to keep the same, what do you think? (Chose: names = UNDER / NORMAL / OVER everywhere.)
+
+### Agent Response Summary
+- **Why the switch felt untaught:** Under is granted SILENTLY at boot (`Bootstrap.GrantNegativeSilently`), so — unlike Flash/Shutter — there is no acquire-banner. The only cue was the prologue's REACTIVE "1 — safelight", which appears *after* you press 1; if you don't know to press it, you never see it. Added a **proactive prompt** in `PrologueDirector.Update`: "Press 1 / 2 to change the exposure", surfaced ~5s in and repeated up to 3× until the player's first switch (`_switched`). Also made the R0 gap hint name the key ("…press 1, then climb what develops").
+- **One vocabulary everywhere (was THREE):** the slider swapped SAFELIGHT/WORK LIGHT/ENLARGER FLASH → UNDER/BALANCED/OVER after the Flash; the badge/card said UNDEREXPOSED/NORMAL/OVEREXPOSED; banners said "press 1: UNDEREXPOSED" — so even at boot the slider ("SAFELIGHT") disagreed with the banner ("UNDEREXPOSED"), and the middle was "BALANCED" vs "NORMAL". Unified to **UNDER / NORMAL / OVER**: dropped the darkroom-action arrays + the vocab swap (`SetExposureVocab` → `RefreshExposureLabels`, which now only re-greys/un-greys the lock state), changed BALANCED→NORMAL, made the tutorial card always use the exposure names, and removed the per-restart label re-seed. The darkroom flavour (the red safelight, the enlarger, the trays) stays in the art/audio/narrative, not the functional labels. Prologue key-confirms are now "1 — under" / "2 — normal".
+
+### Files / Mechanics Changed
+`UI/HUDController.cs` (removed ActionLabels/ActionBadges/ActionBodies + `_exposureVocab`; `ExposureLabels` = UNDER/NORMAL/OVER; card always exposure-vocab; `SetExposureVocab`→`RefreshExposureLabels`; restart reset no longer re-seeds labels), `World/PrologueDirector.cs` (proactive switch prompt + "under"/"normal" confirms), `Level/LevelData.cs` (R0 gap hint names the key). No new files; no validator changes.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`); grep confirms zero residual refs to the removed vocab symbols. Not committed.
+
+### Student Follow-up
+(⌘R then ⌘P. From the first frame the slider/badge/banners/hints all read UNDER · NORMAL · OVER (no more mid-game name change, no BALANCED). In the prologue a "Press 1 / 2 to change the exposure" prompt now appears a few seconds in and repeats until you first switch, and the gap hint says "press 1" outright. Tunables if it's too much/little: prompt timing + repeat count in `PrologueDirector` (`_promptT` 5s start / 7s repeat, `_promptsLeft` 3). If you ever want the darkroom-action flavour back as a SUBTITLE under the exposure name, say so — it's a small additive change now that there's a single source of truth.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 76 — Raw Interaction Log
+
+**Time:** 2026-06-23
+**Development Stage:** Title typography + a clickable exposure bar (Milestone 20.3)
+**Current Goal:** Two UI feedback items: (1) the top-left level name reads like UI (same font as everything else) — make it a TITLE (cursive); (2) testers reach for the exposure bar with the mouse — make it clickable + draggable between modes.
+
+### Student Prompt
+and the level name is on the top left corner right now, which can not be distinguished from other UI, they feel too familiar. Make it into some Cursive writing font or else so that it will be more look like a title rather than UI. Also, during the user testing, they will try to click the exposure bar, I think it will be good to make it clickable and also can slide between the modes.
+
+### Agent Response Summary
+- **Cursive level-name title.** Added `FontLoader.Title` — a script/cursive face with a graceful fallback chain (bundled `Resources/Fonts/Title` → Snell Roundhand / Apple Chancery / Zapfino / Segoe Script / Brush Script → Display → Mono). The top-left `_roomTitle` now uses it at size 30, title-cased ("Frame 4 of 11 :  The Latent Image" instead of mono caps "FRAME 4 OF 11 : THE LATENT IMAGE"), so it reads as a hand-written photo caption, clearly distinct from the Mono objectives/HUD. Nudged the objectives down (−74→−86) for the taller title. The centered ceremonial frame-card (Display caps) is left as-is.
+- **Clickable / draggable exposure bar.** This runtime HUD has NO EventSystem/GraphicRaycaster, so rather than stand up the whole UGUI event stack I poll the mouse directly (new `DarkroomInput.PointerPressed/Held/Pos`). `HUDController.HandleSliderPointer()` (in the existing Update): on a press that lands inside the slider rect it starts a drag; while held it maps the pointer to the NEAREST mode label (via `RectTransformUtility.WorldToScreenPoint`/`RectangleContainsScreenPoint`, null camera — correct for the ScreenSpaceOverlay+CanvasScaler canvas) and switches through `ExposureManager.TrySetExposure` only when the nearest slot CHANGES — so a drag slides Under→Normal→Over and clicks jump straight to a mode. Goes through the exact same gated path as the keys, so locks (OVER before Flash) and the jam rule still apply, and it's suppressed while paused / cinematic / respawning / won.
+
+### Files / Mechanics Changed
+`Core/FontLoader.cs` (new `Title` cursive face), `UI/HUDController.cs` (room title → cursive + title-case, objectives nudged, `HandleSliderPointer` + `ToTitle`), `Core/DarkroomInput.cs` (`using UnityEngine` + mouse pointer helpers). No new files; no validator changes.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`). Not committed.
+
+### Student Follow-up
+(⌘R then ⌘P. The level name top-left is now a cursive title (on this Mac it should resolve to Snell Roundhand; bundle `Resources/Fonts/Title.ttf` to pin it across machines). The exposure bar: click a mode to jump to it, or press-and-drag across to slide Under↔Normal↔Over — locked OVER still jam-shakes until the Flash, same as the key. Tunables: title font size (30) / fallback faces in `FontLoader.Title`; if you'd rather only the NAME be cursive and keep "Frame N of 11" as small mono UI above it, that's a quick split. If clicks ever feel slightly off-target, it's the screen↔canvas mapping — tell me the resolution and I'll adjust. The frame-card on room entry was left in the Display caps face; say if you want it cursive too.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 77 — Raw Interaction Log
+
+**Time:** 2026-06-23
+**Development Stage:** HUD elegance pass — liquid-glass exposure bar (Milestone 20.4)
+**Current Goal:** From a screenshot: (1) the exposure bar is too plain — add a "liquid glass" feel; (2) the cursive level name reads well but is too small; (3) the top-right A/D control text is too eye-catching — grey it down to a faded hint.
+
+### Student Prompt
+this still feels not elegant enough, such as the exposure bar too simple, I think maybe can add some liquid glass effect? And the level name looks good, but too small. The A/D words could be more grey and not so eye-catching, so serve as a faded hint.
+
+### Agent Response Summary
+- **Liquid-glass exposure bar.** A true background-blur "glass" would need a scene grab-pass the overlay HUD can't cheaply get, so I built a layered FAKE that reads as frosted glass with no new shader. Added `PixelArt.RoundedRect` — a 9-sliced rounded-rectangle sprite (rounded-rect SDF, AA edge, 16px corner border) that tints + stretches without distorting corners. Rebuilt `BuildExposureSlider` as a glass module, back-to-front: a soft `SoftGlow` drop-shadow (depth), a cool edge catch-light rim, a frosted semi-transparent rounded body (0.11/0.13/0.17 @ 0.5α), a top sheen bar, then the EXPOSURE caption, a rounded frosted track pill, a GLOSSY knob (now a slider container = warm `SoftGlow` halo + disc body + a specular highlight dot), and the labels/locks on top. `_knob` is now a container `RectTransform` (MoveKnob still slides it by anchoredPosition; the clickable-slider polling is unaffected).
+- **Bigger title.** Cursive room name 30 → 42 pt; widened its box and pushed the objectives down (−86 → −104) so nothing overlaps.
+- **Faded controls.** Top-right control hint greyed from 0.72 → 0.45 and its group alpha 0.65 → 0.55 (incl. the two fade-restore lerps + the restart reset), so it reads as a quiet hint, not active UI.
+
+### Files / Mechanics Changed
+`Core/PixelArt.cs` (new `RoundedRect` 9-slice sprite), `UI/HUDController.cs` (glass-layered `BuildExposureSlider` + glossy container knob; room title 42pt + objectives nudge; controls colour 0.45 + alpha 0.55 across the three references). No new files; no validator changes.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`). Not committed.
+
+### Student Follow-up
+(⌘R then ⌘P. The exposure bar is now a frosted-glass slab — rounded body, edge catch-light, top sheen, and a glossy haloed knob; still click/drag to switch. Tunables (all in `BuildExposureSlider`): glass body alpha 0.5, rim 0.16, sheen 0.10, knob halo 0.4 + size 66, corner radius in `PixelArt.RoundedRect` (16 of 48). Title is 42pt now; controls are a faint grey (colour 0.45 / alpha 0.55) — dial either further if you want. If you'd like the glass to actually refract the scene behind it, that's a bigger job (a camera grab-pass + blur shader feeding the UI) — say the word and I'll scope it.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 78 — Raw Interaction Log
+
+**Time:** 2026-06-23
+**Development Stage:** Exposure bar — just the slide bar as glass (Milestone 20.5)
+**Current Goal:** The full frosted-glass PANEL wrapping the whole module read as strange. Student wants only the slide BAR itself to look like glass, and as TRANSPARENT COLOURED glass.
+
+### Student Prompt
+too strange for the exposure bar, I just need the slide bar itself to be like glass, and it should be transparent color glass
+
+### Agent Response Summary
+Removed the whole glass module (the SoftGlow shadow, the catch-light rim, the frosted body, the top-sheen panel) and the big warm knob halo, and restored the clean original layout (caption y0, track y−38, labels y−64). The TRACK is now the only glass element: a rounded translucent **tinted pill** — cool blue (0.58/0.72/0.95) at **0.28α** so the background shows through (transparent coloured glass) — with a thin bright top-edge **sheen** (white 0.30α) for the glassy highlight. The knob is a clean bright translucent disc + a small specular dot (no halo). Click/drag-to-switch and `_knob`-as-container are unchanged.
+
+### Files / Mechanics Changed
+`UI/HUDController.cs` (`BuildExposureSlider` simplified: glass panel removed, track = transparent tinted glass pill + sheen, clean disc knob). `PixelArt.RoundedRect` kept (still used by the track + sheen). No new files; no validator changes.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`). Not committed.
+
+### Student Follow-up
+(⌘R then ⌘P. Now ONLY the slide bar is glass: a transparent cool-blue tinted pill you can see through, with a bright sheen line on top; clean disc handle; no panel. Tunables in `BuildExposureSlider`: track tint/alpha `(0.58,0.72,0.95, 0.28)` — push alpha lower for clearer glass or change the RGB for a different glass colour; sheen `0.30`; track height `12`. Say if you want the glass tint to shift with the mode — cool in Under, warm in Over.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 79 — Raw Interaction Log
+
+**Time:** 2026-06-23
+**Development Stage:** Exposure bar — neutral baked glass rod (Milestone 20.6)
+**Current Goal:** The tinted pill still read strange and the blue cast was unwanted. Student wants a PURELY glass feeling, neutral (no colour), and is happy with an "advanced texture" to make it look nice.
+
+### Student Prompt
+still strange, why there's a blue color? Make it purely glass feeling, you can add some advanced texture if needed, I want the effect to be nice
+
+### Agent Response Summary
+Replaced the flat tinted-pill-plus-sheen with a proper baked GLASS TEXTURE. New `PixelArt.GlassBar`: a 720×32 horizontal stadium (rounded caps) whose ALPHA carries a top-lit glass profile — a faint translucent body (0.10), a crisp Gaussian specular highlight near the top (peak 0.92 @ v≈0.78), and a soft bottom rim (0.22 @ v≈0.16) — with a subtle neutral top-lit brightness gradient (0.80→1.0). Fully greyscale, so tinted white it has ZERO colour cast; rendered Simple at 360×16 (2:1) so the caps and gradient stay crisp. The track now uses it (white tint, no separate gloss element), and the knob disc was de-blued (was 0.92/0.95/1.0 → neutral 0.97). The old `RoundedRect` helper is left in place (unused now, harmless public utility).
+
+### Files / Mechanics Changed
+`Core/PixelArt.cs` (new `GlassBar` baked-glass sprite), `UI/HUDController.cs` (track → `GlassBar`, white tint, removed the tinted pill + sheen; neutral knob disc). No new files; no validator changes.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`). Not committed.
+
+### Student Follow-up
+(⌘R then ⌘P. The bar should now read as a clear, neutral glass rod — a bright reflection line catching the top, a faint see-through body, a soft glow along the bottom edge, rounded ends — no blue. Tunables in `PixelArt.GlassBar`: `spec` 0.92 (highlight strength), `body` 0.10 (how see-through), `rim` 0.22 (bottom edge); track height 16 in `BuildExposureSlider`. If you want REAL refraction — the bar actually bending/blurring the scene behind it — that needs a camera grab-pass + a blur/refraction shader feeding the UI; it's a bigger job but doable, just say so.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 80 — Raw Interaction Log
+
+**Time:** 2026-06-23
+**Development Stage:** Exposure bar — TRUE refraction glass (Milestone 20.7)
+**Current Goal:** Build real refraction (the bar bends/blurs the scene behind it), and fix the "two layers" feel — the baked texture stacked a flat highlight on a flat body instead of shading like a solid glass rod.
+
+### Student Prompt
+build the true refraction. Another problem is that is still feels like two layers rather than a real glass right now
+
+### Agent Response Summary
+Built a real grab-and-refract pipeline, code-only (no URP renderer-asset edits):
+- **Scene grab (`Core/GlassRefraction.cs`):** a manager (added in `Bootstrap` before the HUD) subscribes to `RenderPipelineManager.endCameraRendering` and, for the main camera (after the world + post-processing, BEFORE the overlay HUD draws → no self-feedback), `ScreenCapture.CaptureScreenshotIntoRenderTexture` into a screen-sized RT, fed to the glass material as `_GrabTex`. Recreates the RT on resize; degrades to null material (→ baked-glass fallback) if the shader is absent.
+- **Refraction + cylindrical glass shader (`Resources/GlassRefract.shader`, UI/CG):** computes a rounded-capsule mask from the quad UV (so a plain `RawImage` is enough), models the bar as a horizontal glass ROD cross-section (`c` = −1..1, fullness `n = √(1−c²)`), bends the captured-scene sample vertically by the surface tilt (`_Refract`) and frosts it with a 5-tap blur, then composites ONE continuous tone (refracted bg × tint, thicker centre darker) + a crisp top sheen + a Fresnel edge rim. Neutral, no colour cast. `Fallback "UI/Default"`.
+- **Wiring:** the track is now a `RawImage` with the glass material (fallback: an `Image` with the baked `PixelArt.GlassBar`). The "two layers" is fixed by the continuous `n`-based shading + the rim — it reads as a solid rod, refraction or not.
+
+### Files / Mechanics Changed
+NEW `Resources/GlassRefract.shader`, NEW `Core/GlassRefraction.cs` (both with hand-made metas), `Core/Bootstrap.cs` (+`GlassRefraction` manager), `UI/HUDController.cs` (track → RawImage + glass material, baked fallback). Updated the `darkroom-project` memory's csc command (now needs `UnityEngine.ScreenCaptureModule.dll`). No validator changes.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`) with the added ScreenCapture module ref. Shader render-correctness is an in-editor check (the guarded null/UI-Default fallback keeps it safe).
+
+### Student Follow-up
+(⌘R then ⌘P — ⌘R matters here so Unity imports the NEW shader; until it does, the bar uses the baked-glass fallback. Watch the bar over a bright spot (the EXPOSURE text / a lamp) to see it bend + frost. Honest caveats to check in-editor: (1) `ScreenCapture` timing under URP may capture a frame late or, worst case, include the HUD — if you see the bar faintly showing itself, tell me and I'll switch the grab to a CommandBuffer blit; (2) the grab may be Y-flipped on some setups — if the refraction bends the wrong way it's a one-line UV flip; (3) over the near-black backdrop the effect is subtle by nature. Tunables in `GlassRefract.shader`: `_Refract` 0.02, `_Blur` 0.004, `_Spec` 1.5, `_Rim` 0.8, `_Tint`. If you'd rather the glass also tint with the exposure (cool/warm), that's a small add.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 81 — Raw Interaction Log
+
+**Time:** 2026-06-23
+**Development Stage:** Glass tint tracks the exposure (Milestone 20.7a)
+**Current Goal:** Make the glass bar's tint shift with the exposure mode.
+
+### Student Prompt
+yeah sure, make the glass tint shift with the exposure mode
+
+### Agent Response Summary
+`GlassRefraction` now subscribes to `ExposureManager.OnExposureChanged` and lerps the shader's `_Tint` toward a per-mode colour — cool (0.78/0.86/1.0) in Under, neutral (0.94/0.96/0.99) in Normal, warm (1.0/0.92/0.80) in Over — over ~0.2s, set on the material in `Update`. The tint multiplies only the refracted glass BODY; the specular sheen + Fresnel rim stay white, so it reads as tinted glass, not a coloured filter. Unsubscribed in `OnDestroy`. (Applies on the refraction-shader path; the baked-glass fallback stays neutral.)
+
+### Files / Mechanics Changed
+`Core/GlassRefraction.cs` (exposure-driven `_Tint` lerp). No new files; no validator changes.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`).
+
+### Student Follow-up
+(⌘R then ⌘P. The glass bar now drifts cool when you go Under, warm when you go Over, neutral at Normal — a soft ~0.2s blend. Tunables in `GlassRefraction`: the three `Tint*` colours and the lerp speed (5). Push the colours further from white for a stronger tint.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 82 — Raw Interaction Log
+
+**Time:** 2026-06-24
+**Development Stage:** Craft-chain reframe — dramatize FIX (R3), choreograph THE DROP (R9), confirm the R6 dual-use light (Milestone 21)
+
+**Current Goal:** Reframe the three exposures as a darkroom craft chain (Under = DISCOVERY, Normal = JUDGMENT, Over = COMMITMENT) and, instead of adding objects, deepen three existing signature beats: make FIX/定影 the first stunning "I changed the photo" moment (R3), make THE DROP a remembered set-piece rather than a puzzle (R9), and verify R6's "one stroke = ladder + key" actually works.
+
+### Student Prompt
+(Design brief: turn 1/2/3 into three psychological crafts — Under/Safelight = 发现 (develop, see hidden paths, shadows hold you), Normal/Work-light = 判断 (read the true structure: permanent vs image vs burnable), Over/Flash = 承诺 (burn, fix, irreversible, costly). Don't add new objects — build 3 designed combination beats around the existing BurnPaper/FixPlatform/ShadowLift/RiseLift/UmbralBarrier. R3: make the print DEVELOP like paper (grain→outline→solid) and leave a permanent mark. R6: light-trail as ladder AND key (already affirmed). R9: keep slow/vicious/poetic — caught by shadow, lights out, world quiet, like INSIDE/LIMBO; don't stuff in more mechanisms.)
+
+### Agent Response Summary
+Mapped the brief onto the codebase (5-agent read) before touching anything: the craft chain is already the spine (`ExposureManager` enum + subscribers), and two of the three beats were already built. Then:
+- **R3 — FixPlatform print, dramatized (`World/FixPlatform.cs`):** the print was a flat 0.5s alpha crossfade that ignored the project's own `Resources/SpriteDevelop.shader` (a grain-threshold dissolve with a warm halation front). Re-pointed `DevelopIn()` at `VisualFactory.DevelopMat`, driving `_Develop` 0→1 over **1.1s via a `MaterialPropertyBlock`** (per-renderer, so two slabs printing at once don't share the shared material's `_Develop` — same idiom as `PlayerAnimator.DevelopRoutine`). The slab warms from the cool latent negative to a developed-paper tint as the image surfaces; a second warm spark fires as the front crosses the middle; the collider still flips on instantly (commit = footing now). **Permanent mark:** the grain veil settles to a faint warm **emulsion residual** (alpha 0.10) that never fully clears, and the slab keeps a warm `PrintedTint` — so printed footing reads as a developed print forever, visually distinct from native cool-grey ground (this also carries the Normal=JUDGMENT "read the structure" idea through visual language, no UI). Null-safe: if the shader is absent it falls back to the old alpha fade.
+- **R9 — THE DROP, choreographed catch (`World/ShadowLift.cs`, `World/ScriptedBlackout.cs`, `Level/LevelBuilder.cs`):** the set-piece already had wind / camera-lag / lamp-flicker→blackout / ambience-duck / sleeping shades; what was missing was the **catch** as a beat. Added a **catch-hang** to `ShadowLift` (0.45s held breath as the shadow takes her weight before it sinks) and slowed the descent (`sinkSpeed` 1.6 → **1.1**, set at the build site) for dread. In `ScriptedBlackout` added a one-shot **CAUGHT gate**: the instant she's grounded on the lift in the shaft (Under), the world holds its breath — wind settles to a low draught (0.12), ambience half-ducks (0.5), a low hum nudge — and **exposure locks** (`SetLocked(true)`): for once the slider is taken out of her hands so she can't let the light back in and drop herself. The lock + hush hand off cleanly to the existing corridor blackout on touchdown; `Abort()`/`Restore()` release them and re-arm on any respawn that hasn't reached the blackout. The lift *mechanic* is unchanged (the vanish-on-relight risk still exists in isolation) — only R9's orchestration chooses to lock.
+- **R6 — confirmed, no change:** verified in code that the drawn bright stroke is simultaneously the climbable ladder (its `EdgeCollider2D` joins the ground mask on `Fix()`) and the meter key (only `BrightStroke` registers a `LightField` emitter). Numbers hold: climb-stroke ≈0.53–0.55 lux at the wall meter vs 0.4 threshold; body-glow peaks 0.35 (below threshold) → a real stroke is forced; 3-stroke budget + permanent `Door_R6L` + `CP_R6b` make it soft-lock-proof.
+
+### Files / Mechanics Changed
+`World/FixPlatform.cs` (SpriteDevelop shader reveal + permanent emulsion/print mark, 1.1s), `World/ShadowLift.cs` (catch-hang), `Level/LevelBuilder.cs` (`Lift()` sinkSpeed 1.1), `World/ScriptedBlackout.cs` (caught beat: hush + exposure-lock, with abort/restore cleanup). No new files (no metas needed). No validator change — all decoration is child-of-object, not child-of-root, and no def counts moved.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`). Editor was open → batchmode validator deferred (no data counts changed, so it should stay green). Two design forks left open for the student: (1) how far to take Normal=JUDGMENT (visual-language only vs a held "read" overlay vs world labels); (2) whether to relocate R9's curtain/UmbralBarrier teach out of the drop's tail (would update the validator `umbrals`/`hints` literals).
+
+### Student Follow-up
+(⌘R then ⌘P — ⌘R matters so Unity recompiles. **R3:** flash OVER (3) next to a ghost slab and watch it develop out of the grain with a warm front, then stay marked; tunables in `FixPlatform` — `DevelopDur` 1.1, `PrintedTint`, `EmulsionResidual`. **R9:** go Under (1) at the ledge and drop — the shadow now catches and *holds* for a breath, the room hushes, the slider locks, and it sinks slowly to the corridor before the lights die; tunables — `ShadowLift.CatchHang` 0.45, `sinkSpeed` 1.1 in `LevelBuilder.Lift()`, and the catch hush in `ScriptedBlackout`. If you'd rather keep the old mid-descent vanish risk, the one-line `SetLocked(true)` in the CAUGHT gate is the thing to drop.)
+
+### Student Decision (same interaction) + follow-through
+Asked the two open forks; student chose both recommended:
+- **Normal=JUDGMENT → visual-language only.** No new mechanic — the R3 print-mark + existing material identities (cool-grey native ground, white burnable paper, faint ghosts) + hold-to-preview already carry "read the true structure." Nothing further built.
+- **R9 curtain → pulled out of the drop.** Removed `R9_ThresholdUmbra` + its teach hint from `LevelData` so THE DROP ends as a pure set-piece (trust-fall → dark walk → relight → stairs → finale, no gate). R10's `R10_PostUmbra` is now the curtain's only appearance; reworded R10's hint from "One more curtain…" to a first-teach ("A blackout curtain — flood it in Over (3) and step through."). Updated the validator literals: `umbrals 2→1`, `hints 19→18` (the built-object-count check auto-tracks from data). Tier-1 `csc` clean.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 83 — Raw Interaction Log
+
+**Time:** 2026-06-24
+**Development Stage:** R6 legibility — the light meter sleeps under the safelight (Milestone 21.1)
+**Current Goal:** Make R6's "draw a stroke to trip the meter" beat feel natural and stop players asking "why can't I activate it in Under?"
+
+### Student Prompt
+(那个跳起来画一笔来触发传感器的设计怎么做再精妙合理一点？现在总感觉不够自然，而且用户会想着在 under 模式下跳为什么不能激活)
+
+### Agent Response Summary
+Diagnosed the "why not Under?" confusion to a concrete cause: the player's body glow is a **constant** `LightField` emitter (`PlayerController.cs:61` — radius 1.5, intensity 0.35) that was **NOT gated by exposure mode**. So the cyan light-meter's iris half-filled from mere presence **identically in Under/Normal/Over**, and a dark stroke added nothing (only `BrightStroke` registers as light) — leaving a teasing partial reading the safelight could never complete and no signal that Over was required. **Fix (`PlayerController.cs`):** gated the body-glow's puzzle-light contribution to **Over only** (the lambda now returns `glow.intensity` only when `ExposureManager.Current == Overexposed`, else 0). The fiction justifies it perfectly — a *safelight* is by definition the light that does not expose, so a light meter ignoring it is the most darkroom-true rule in the game. Now every meter and curtain stays cold in Under/Normal no matter how you climb or what dark stroke you draw; in Over the body glow gives an "almost" tease that a drawn bright stroke finishes. Vision is untouched (the Light2D still shines 0.35, so Under is never blind). Verified only `PhotoSensor` (meters/wash) + `UmbralBarrier` (curtains) consume `LightField`, and all are Over-deliveries — so the gate is safe and also makes the curtains provably Over-only.
+
+Left the "feels unnatural" half as a design fork for the student: the vertical jump-and-draw fights the draw verb (strokes lay at the feet during horizontal motion, so the natural product is a horizontal bridge, not a vertical ladder). Options offered: (A) reframe to a horizontal bridge-of-light whose path bathes the meter [recommended], (B) keep the vertical climb but make it forgiving, (C) decouple climb from key, (D) leave the geometry and ship the gate (+ optional iris sleep/wake visual).
+
+### Files / Mechanics Changed
+`Player/PlayerController.cs` (body-glow `LightField` intensity gated to Over). No new files; no validator change.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`).
+
+### Student Follow-up
+(⌘R then ⌘P. In Under/Normal the cyan meter now stays cold regardless of how you climb or what you draw; switch to Over and it wakes — your own glow nearly fills it, a drawn bright stroke completes it. Tunable: the gate is the lambda in `PlayerController` — to allow a faint Under reading instead of nothing, return a small value rather than 0. Geometry/naturalness rework pending the student's choice of direction.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 84 — Raw Interaction Log
+
+**Time:** 2026-06-24
+**Development Stage:** R6 finale — light-STEP to the exit replaces the wall-climb (Milestone 21.2)
+**Current Goal:** Make R6's draw-to-trip-the-meter beat natural (the vertical wall-climb fought the draw verb).
+
+### Student Prompt
+(Follow-up to Interaction 83: chose "horizontal bridge of light" for the R6 rework.)
+
+### Agent Response Summary
+Surfaced an engine constraint first: player-drawn strokes are laid at the feet during motion, so they follow the jump arc and can only span ~jump distance before sagging into the void — meaning **any gap a drawn stroke can bridge is also just jumpable**, so a flat horizontal player-drawn bridge over an *un-jumpable* gap is impossible. Confirmed by the existing levels: every player-drawn crossing (R5/R7/R10) is a *step UP*; every wide horizontal bridge (R8) is pre-authored. Presented the engine-true realizations; student chose **"drawn light-step to the exit."**
+
+Reworked R6's finale (`LevelData.cs`, R6_SensorTest) to mirror R5's proven geometry: replaced the vertical ShaftWall + side-meter with a **launch pad → +3 raised exit ledge over a 2-wide gap**, reached by ONE bright step drawn at the jump's apex. The step's `BrightStroke` light wakes the new wall-meter (`R6_LightMeter` at the exit's near lip, LocalLux 0.4) which opens `Door_R6L`. In UNDER a dark step lifts you identically but feeds the meter nothing (reinforced by Interaction 83's Over-gated glow), so it stays cold — the "why not Under?" answers itself. Slid the body-sensor beat left (Floor x78-89→x78-86, shelves/anchor/Door_R6/ceiling shifted ~-1.7) to free the ~2.5 horizontal units the apex-step needs. Soft-lock-proof: `CP_R6b` on the launch pad, a 2-wide exit ledge to redraw a bright stroke from, and a recoverable dark-step path (walk back on the dark step in Under, or redraw in Over from the ledge).
+
+Box/sensor/door/checkpoint/hint counts all unchanged (PostFloor→LaunchPad, ShaftWall→ExitLedge; still 2 DarkPath in R6), so NO validator literal change and the built-object count auto-tracks.
+
+### Files / Mechanics Changed
+`Level/LevelData.cs` (R6_SensorTest finale: launch pad + raised exit ledge + lip-mounted meter, body-sensor shifted left, both hints reworded). No new files; no validator change.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`). Geometry is a blind edit (editor open → no batchmode/playtest) but mirrors R5's proven pad→+3-ledge-over-2-gap numbers.
+
+### Student Follow-up
+(⌘R then ⌘P. Trip the body sensor (climb the dark shelves in Under to the anchor, press 3), pass Door_R6, then on the launch pad in OVER draw a step at the jump's apex up to the raised ledge — the step's light wakes the cyan meter and opens the gate; the same step drawn in Under (dark) lifts you but leaves the meter cold. THINGS TO CHECK IN-ENGINE: (1) the apex-step reaches the +3 ledge over the 2-gap (should feel like R5); (2) the step actually lights the meter at x91.5 (if not, nudge the meter toward the step path or widen its light radius); (3) the drop from the exit ledge into R7 reads OK (3 units). Tunables: ExitLedge height/gap width, R6_LightMeter position, LaunchPad width.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 85 — Raw Interaction Log
+
+**Time:** 2026-06-24
+**Development Stage:** OVER becomes a world — blown-out flash exposure, the bright pole opposite Under (Milestone 21.3)
+**Current Goal:** Make OVER feel like entering another world (as UNDER does), not a slightly-warmer NORMAL.
+
+### Student Prompt
+(很好，但是现在 over 的模式看起来和 normal 真的差别不大，没有 under 那种沉浸式进入另一个世界的感觉)
+
+### Agent Response Summary
+Diagnosed the root: OVER's only real differentiator was the camera BACKGROUND (warm-white vs Normal's near-black) — the foreground was nearly untouched. `LightDirector.OverIntensity` was 1.3 ≈ Normal's 1.38, and the PostFX Over grade was a deliberately-subtle split-tone (postExposure 0.10, even darker than Normal's 0.36; filter ~identical to Normal). A prior pass had explicitly chosen "graded overexposure, NOT a light flood" — which is exactly why OVER read like NORMAL. Reframed OVER as the bright pole opposite Under's dark safelight: a cohesive BLOWN-OUT FLASH world.
+- **`LightDirector`:** OverIntensity 1.3 → **1.62** (the foreground itself floods now), OverColor → brighter near-white (1.03,0.99,0.92), OverBg → blown near-white (0.94,0.92,0.88).
+- **`PostFXDirector` Over grade:** postExposure 0.10 → **0.72** (floods bright), bloom 0.5 → **1.35** + threshold 0.95 → **0.55** (broad halation/glow), saturation -4 → **-32** (bleached toward white), contrast 8 → **3** + vignette 0.20 → **0.05** (shadows lifted/opened — nothing hides, the inverse of Under's deep dark frame), filter → neutral (1.00,1.00,0.99). Split keeps a hint of hot highlights for the "burn" glow.
+- **Shutter-flash punch:** committing to OVER (non-silent) fires a bright bloom spike (+0.6 postExposure, +0.8 bloom, threshold → 0.4) that decays over 0.2s into the blown grade — the camera firing. Suppressed on silent ForceSet (respawn / R9 blackout). Cleared in ResetForRestart.
+
+### Files / Mechanics Changed
+`Core/LightDirector.cs` (Over color/intensity/bg), `Core/PostFXDirector.cs` (Over grade overhaul + flash-punch field/trigger/Update/reset). No new files; no validator change.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`). Look is an in-engine judgement.
+
+### Student Follow-up
+(⌘R then ⌘P. Press 3 anywhere with the flash: the screen should now PUNCH bright then settle into a bleached, blown, glowing world with no dark corners — distinct from both warm Normal and dark-cold Under. DIRECTION I CHOSE: blown/bleached/exposed (clinical, "nowhere to hide") with a hot bloom glow for the burn — the most distinct from Normal. IF YOU WANT WARM/BURNING INSTEAD (amber, scorched), it's a few values: PostFX Over filter → warm + stHighlights hotter, OverColor/OverBg warmer. CHECK IN-ENGINE: (1) legibility — can you still read platforms, your bright strokes, and enemies when blown? if too washed, drop PostFX Over.postExposure (0.72) and LightDirector OverIntensity (1.62); (2) is the flash-punch too strong/searing? tune FlashExposure 0.6 / FlashBloom 0.8 / FlashDecay 0.2 in PostFXDirector. All values are named consts/grades.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 86 — Raw Interaction Log
+
+**Time:** 2026-06-24
+**Development Stage:** OVER background gets its own hue — hot amber (Milestone 21.4)
+**Current Goal:** Give the OVER camera background a distinct colour identity, like UNDER's dark blue.
+
+### Student Prompt
+(I want to change the background as well, like the under mode to change the background to dark blue, we could give the over background a new color)
+
+### Agent Response Summary
+The three camera backgrounds previously read: Under = deep blue (0.04,0.06,0.14), Normal = near-black (0.07,0.07,0.08), Over = neutral blown near-white (0.94,0.92,0.88) — Over had brightness but no HUE identity. Gave Over a hue: **hot amber-gold (0.96, 0.82, 0.60)** in `LightDirector.OverBg` — the warm pole opposite Under's cool blue (Normal stays the neutral between them), reading as the enlarger's scorch / the burn of commitment. Showed the student a swatch palette (the three modes + three alternative Over hues: hot orange 0.98/0.72/0.42, blown peach 0.99/0.84/0.78, ember 0.93/0.55/0.36) so the colour is theirs to pick — it's a one-value swap.
+
+### Files / Mechanics Changed
+`Core/LightDirector.cs` (OverBg → hot amber-gold; comment updated to note each mode now owns a hue). No new files; no validator change.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`).
+
+### Student Follow-up
+(⌘R then ⌘P. The Over backdrop is now warm amber behind the bleached/blown foreground — Under blue, Normal near-black, Over amber, a full cool→neutral→warm set. To swap: one line, `OverBg` in `LightDirector` — alternatives offered: hot orange (0.98,0.72,0.42), blown peach (0.99,0.84,0.78), ember/burning (0.93,0.55,0.36). If you want the whole Over light to go warmer to match (not just the backdrop), `OverColor` is the partner value.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 87 — Raw Interaction Log
+
+**Time:** 2026-06-24
+**Development Stage:** Over background actually changes — fixed the wrong-layer bug (Milestone 21.5)
+**Current Goal:** The student reported (with a screenshot, in OVER) that the Over background looked unchanged.
+
+### Student Prompt
+(I don't feel the over's background been changed — screenshot showed OVER selected but a dark world.)
+
+### Agent Response Summary
+Two findings. (1) The screenshot's OVER world was DARK — but with the M21.3 changes (postExposure 0.72, OverIntensity 1.62, bloom 1.35) it should be BLOWN BRIGHT. That means a **stale assembly**: Unity was running pre-M21.3 compiled scripts (the editor hadn't reimported the external edits). Flagged the known ⌘R-before-⌘P gotcha. (2) More importantly, the per-mode background I'd been editing was the **wrong layer**: `LightDirector.OverBg` is the camera CLEAR colour, which is (a) hidden behind the parallax backdrop and (b) overwritten every frame by `CameraFollow`'s x-based "develop warm" tint — so it never reaches the screen. The REAL per-mode background is `BackdropTint`, which tints the parallax backdrop sprites (Under's blue comes from `BackdropTint.UnderTint`). Over's was `OverTint = (0.90,0.85,0.74)` — a pale warm-WHITE, too close to the lamp warmth to read as a colour. Fixed: `BackdropTint.OverTint` → saturated **hot amber (0.96,0.76,0.44)**, strength 0.80→0.82 — the true parallel to Under's saturated blue. Added a note on `LightDirector.*Bg` clarifying it's the gap-fallback (BackdropTint owns the visible background).
+
+### Files / Mechanics Changed
+`World/BackdropTint.cs` (OverTint → hot amber, strength 0.82, comment), `Core/LightDirector.cs` (clarifying note that *Bg is the gap fallback, not the visible background). No new files; no validator change.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`).
+
+### Student Follow-up
+(IMPORTANT — ⌘R (Assets → Refresh) BEFORE ⌘P, or Unity keeps running the old assembly and NONE of the recent Over changes show (that's why your screenshot's Over was still dark — the blown-Over grade wasn't compiled in). After recompiling, in OVER you should see BOTH: the foreground blow bright AND the backdrop wash hot amber. The real lever for the per-mode background is `BackdropTint.OverTint`/`OverStrength` (NOT LightDirector.OverBg, which is hidden + overridden by CameraFollow). To push the amber harder, raise OverStrength toward Under's look or saturate OverTint further. If you also want the empty gaps (camera clear colour) to go amber in Over, that needs reconciling CameraFollow's x-based develop tint with exposure — a separate change, flag if wanted.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 88 — Raw Interaction Log
+
+**Time:** 2026-06-24
+**Development Stage:** The VOID itself changes per exposure — the real "background" fix (Milestone 21.6)
+**Current Goal:** The student noticed the empty background stays black in EVERY mode (Under too), so the per-mode colour was only on the "photo", not the background.
+
+### Student Prompt
+(或者是否是改变的就是照片的颜色而不是背景的颜色，因为我发现实际上 under 的背景也是黑的 — "maybe what changes is the photo's colour, not the background's, because I noticed Under's background is also black")
+
+### Agent Response Summary
+The student was exactly right. There are two "backgrounds": (1) the backdrop ART ("the photo" — parallax room/props), tinted per exposure by `BackdropTint`; (2) the empty VOID behind it = the camera CLEAR colour. The void was driven by `CameraFollow.LateUpdate` lerping `VisualFactory.Background`→`BackgroundWarm` by player-X ("the print develops warm") — running EVERY frame and overriding `LightDirector`'s per-exposure `*Bg`, so the void stayed near-black in every mode, Under included. So only the photo changed colour, never the background. Fix: **removed CameraFollow's x-based background lerp** (and the now-dead `TintMinX/TintMaxX` fields, `_cam` field/Awake) so `LightDirector` owns the camera clear colour PER EXPOSURE. Set the void colours: Under `(0.05,0.07,0.18)` dark blue, Normal `(0.07,0.07,0.08)` near-black, Over `(0.82,0.56,0.26)` hot amber. Now the WHOLE frame (void + photo) takes the mode's colour — Under a blue world, Over an amber world. Tradeoff flagged: the subtle "develops warm by x" narrative tint is dropped (it was near-imperceptible between two near-blacks and conflicted with per-mode colour); can be re-added inside LightDirector as an exposure-aware warm-by-progress shift if wanted. Updated the [[darkroom-visual-layers]] memory.
+
+### Files / Mechanics Changed
+`Core/CameraFollow.cs` (removed the x-based bg lerp + dead `TintMinX/TintMaxX`/`_cam`/`Awake`), `Core/LightDirector.cs` (the `*Bg` void colours now actually drive the screen; Under bluer, Over amber). `VisualFactory.BackgroundWarm` now unused (left defined). No new files; no validator change.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`).
+
+### Student Follow-up
+(STILL must ⌘R after STOPPING play, then ▶ — Unity won't recompile mid-play. After that: Under = the void goes deep blue (not black anymore), Over = the void goes amber, Normal = near-black. Combined with the foreground flood + BackdropTint, each mode is now a full-screen world. Tunables: `LightDirector.UnderBg/OverBg` (void colours) and `BackdropTint.*Tint` (the photo). If Over's amber void is too bright/dim, OverBg is the single value. If you miss the "develops warm as you progress" tint, say so and I'll re-add it as an exposure-aware shift.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 89 — Raw Interaction Log
+
+**Time:** 2026-06-24
+**Development Stage:** OVER edge-merge — halation softens sprite edges on the bright field (Milestone 21.7)
+**Current Goal:** In the new bright amber OVER, some elements (esp. the cool grainy latent slabs) show hard sprite edges that don't blend.
+
+### Student Prompt
+(good fix. But in over, some elements will be a little strange with the edges not merging well, how to fix?)
+
+### Agent Response Summary
+Confirmed the cause: `VisualFactory.GlowMat` (and the ghost/grain sprites) are `Sprite-Unlit-Default` — unlit, alpha-blended, authored to read as light against BLACK. On the bright amber OVER field they sit as pasted-on rectangles (the clearest offenders: the R3 latent FixPlatform slabs' cool tiled grain veil). Fix = HALATION: a real overexposure bleeds the bright field's light around every object, eating hard edges. OVER already had bloom (1.35) but its threshold (0.55) was too high for the bright background to bleed. Lowered `Over.bloomThreshold` 0.55 → **0.42** (the amber field now sits above it and halates) and bumped `Over.bloom` 1.35 → **1.5**. The HUD is a separate overlay canvas (grabbed before post), so it's unaffected.
+
+### Files / Mechanics Changed
+`Core/PostFXDirector.cs` (Over grade: bloomThreshold 0.42, bloom 1.5, comment). No new files; no validator change.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`).
+
+### Student Follow-up
+(⌘R after STOPPING play, then ▶. OVER should now read softer/dreamier — the amber bleeds around edges instead of hard sprite boxes. Tunable: `Over.bloomThreshold` (lower = more bleed/haze, higher = crisper) and `Over.bloom`. If the cool grainy LATENT slabs specifically still look pasted-on after this, that's a targeted fix — I'd soften their grain veil (alpha/soft edge in `LevelBuilder.Latent`) or warm its tint so it doesn't fight the amber; say the word. Also possible: fade decorative glow halos in OVER since glows are pointless on a bright field.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 90 — Raw Interaction Log
+
+**Time:** 2026-06-24
+**Development Stage:** OVER reframed — warm golden PRINT instead of white blow-out (Milestone 21.8)
+**Current Goal:** The blown/halated OVER clipped surfaces to flat white boxes (worse, not better).
+
+### Student Prompt
+(still not good enough — screenshot showed platforms / the light-lift blown to hard flat-white rectangles, lamp beams smearing.)
+
+### Agent Response Summary
+The blown direction was the mistake. `postExposure 0.72` + global light `1.62` pushed mid-grey surfaces PAST pure white, so they clipped to flat white boxes, and the low bloom threshold (0.42) smeared the lamps. Key realization: now that the BACKGROUND is amber (the void + BackdropTint), OVER already reads as another world — so the foreground must NOT blow out. Reframed OVER as a warm GOLDEN/SEPIA PRINT that holds its tones:
+- `PostFXDirector` Over: postExposure 0.72 → **0.42** (no clipping), bloom 1.5 → **1.0** + threshold 0.42 → **0.62** (only true lights glow, no smear/haze), saturation -32 → **-2** (rich/warm, not bleached white), contrast 3 → **5**, vignette 0.05 → **0.18** warm (frames the print, gives depth), filter → warm golden **(1.06,0.94,0.78)**.
+- `LightDirector`: OverIntensity 1.62 → **1.46** (lifted over Normal's 1.38 but not blowing), OverColor → warmer **(1.05,0.96,0.84)**.
+The amber background (void + backdrop) is unchanged — it carries the mode identity, so the foreground only needs a warm lift.
+
+### Files / Mechanics Changed
+`Core/PostFXDirector.cs` (Over grade: golden-print values + comment), `Core/LightDirector.cs` (OverIntensity 1.46, warmer OverColor). No new files; no validator change.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`).
+
+### Student Follow-up
+(⌘R after STOPPING play, then ▶. OVER should now be a clean warm GOLDEN world — surfaces hold their tone (no flat-white boxes), lamps glow softly instead of smearing, amber backdrop carries the "other world" feel. The taste axis is DRAMA: if you want it more lifted/intense, raise `Over.postExposure` (0.42) and `OverIntensity` (1.46) a little; if still too bright/washed, drop them. If the amber backdrop ART looks too flat, lower `BackdropTint.OverStrength` (0.82). Tell me which way it's off and I'll dial it.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 91 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** OVER = warm-white (not amber) + midground hangings hidden (Milestone 21.9)
+**Current Goal:** Student: revert OVER background from amber to the previous warm-white, and hide the dark midground hangings in OVER for a harmonious frame.
+
+### Student Prompt
+(还是有点怪，首先调回之前那个暖白色而非琥珀色，然后在 over 模式下就让中景那些挂件不可见吧，这样和谐一些)
+
+### Agent Response Summary
+Two requests, both done.
+1. **OVER background amber → warm-white.** `BackdropTint.OverTint` (0.96,0.76,0.44 amber) → **(0.90,0.85,0.74)** (the previous warm-white). `LightDirector.OverBg` void (0.82,0.56,0.26 amber) → **(0.90,0.86,0.78)** soft warm-white. Softened the warm grade so it doesn't drift orange again: PostFX Over `filter` (1.06,0.94,0.78) → **(1.04,0.97,0.88)**, `stHighlights` → gentler (0.55,0.53,0.49), `vignetteColor` less orange; `LightDirector.OverColor` → **(1.04,0.98,0.91)**.
+2. **Hide the midground hangings in OVER.** The `MidGround` layer (drying lines, pipes, clutter, safelight) is deliberately untinted dark silhouettes — they read as black blobs on the bright OVER wall. Extended `BackdropTint` to collect the `MidGround` children's sprites and **fade their alpha to 0 in OVER** (lerped, eases with the tint), restored in Under/Normal. No new script/meta — folded into the existing component. (Backdrop is separate from the level root, so no validator impact.)
+
+### Files / Mechanics Changed
+`World/BackdropTint.cs` (OverTint warm-white + MidGround fade-out in Over), `Core/LightDirector.cs` (OverBg warm-white void, OverColor gentler), `Core/PostFXDirector.cs` (Over filter/highlights/vignette softened toward warm-white). No new files; no validator change.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`).
+
+### Student Follow-up
+(⌘R after STOPPING play, then ▶. OVER is now a soft WARM-WHITE world (not orange), and the midground hangings fade away when you flash to OVER — back when you leave it. Tunables: `BackdropTint.OverTint` + `LightDirector.OverBg` (the warm-white), and the fade is all-or-nothing per the `_midHideT` in `BackdropTint` — if you'd rather DIM them to a faint ghost instead of fully hidden, that's a one-number change (cap `_midHide` below 1).)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 92 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Teaching-curve refinement — strict single-solution front, combinatorial back (Milestone 22)
+**Current Goal:** Per the professor's advice — early mechanisms force ONE solution (drill each verb), the later half opens to MULTIPLE combination solutions (player expression).
+
+### Student Prompt
+(我想再精进一下关卡设计，教授的建议是刚开始的机关只能用一种方式过关，强制用户学习，到后半段再让用户进行多种组合的探索)
+
+### Agent Response Summary
+Plan-mode task. Audited all 11 rooms (2 Explore + 2 Plan agents): the FRONT (R0–R6) already forces a single solution per room; the BACK was barely open (only R10 had a real choice). Student chose: open R7–R10 via alternate routes inside the existing 11 rooms (keep R9 pure), AND tighten the front. Implemented:
+- **A1 R2** — raised `R2_BurnWall` top 2.5→3.5 (it was un-jumpable by only 0.011u vs the 2.489 apex). Burning stays forced with margin.
+- **A2 R3** — repositioned the two latent slabs leftward (`R3_LatentA` 39.8→**36.2**, `R3_LatentB` 41.2→**39.0**) so printing slab A ALONE leaves R4 un-jumpable (A right edge x37.0, 5.0u gap > 4.54u reach), forcing B as a mandatory SECOND print. Closes the one front-half looseness (the skippable second print). Updated comments.
+- **B1 R7** — added `FixDef("R7_LatentLedge", 104.2, 5.6, 1.6, 0.4)`: a PRINT route to the high ledge as an alternate to freeze+draw (drawer-vs-printer; pairs with freezing the guard first). Ghost until printed, so a verb is still mandatory.
+- **B2 R8** — added `FixDef("R8_LatentStep", 111.5, 6.6, 1.6, 0.4)` on the light-bridge (OVER) side only — a printer's handhold (modest; the dark bridge is UNDER-only so can't be printed on). Doesn't bypass the switch rule.
+- **B3a R10** — reworded the umbra hint to sanction a second verb (draw a bright stroke across the curtain vs flood-in-Over). No object.
+- **B3b R10 exit rung — DROPPED**: verified AnchorB→ExitPlatform is already a trivial jump after the final burn, so a rung there is redundant.
+- **Validator**: bumped `fixPlats == 3` → **5** (R3 x2 + R7/R8/R10 x1). No other count changed (no boxes/enemies/sensors/doors/burns/hints/lostFrames added).
+
+Result: front half is now strictly single-solution (R3's two-print rule enforced, R2 hardened); back third (R7/R10 strongly, R8 modestly) offers genuine multi-verb choice — the "single front, combinatorial back" arc.
+
+### Files / Mechanics Changed
+`Level/LevelData.cs` (R2 resize, R3 reposition, R7+R8 new FixDefs, R10 hint), `Editor/DarkroomValidator.cs` (`fixPlats` 3→5). No new files; no new metas.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`). Batchmode validator deferred (Editor open) — only the `fixPlats` literal changed and it matches the authored count.
+
+### Student Follow-up
+(⌘R then ⌘P, and run the batchmode validator when the Editor is closed. IN-ENGINE CHECKS — the geometry margins are tight: R3 (print ONE slab → R4 should now be un-jumpable, forcing the 2nd print; print-from-floor ~2.2–3.0u distances); R7 (solvable BOTH by freeze+draw AND by printing the new slab — confirm the ~2.2u print-from-floor and the slab→ledge +1.7 hop); R8 (the new rung prints from Start but the anchor-switch rule still holds); R10 (umbra now passable by a drawn bright stroke too). If any print distance is just out of range or a margin reads wrong, the slab coords are single-number nudges.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 93 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Layered 2.5D depth — new parallax bands + rigged silhouette figures (Milestone 22)
+**Current Goal:** The student asked to make the visuals richer — add assets (incl. rigged characters) and more varied foreground / mid-ground / background arrangements for a 3D-like effect.
+
+### Student Prompt
+(Can we add any additional assets — such as rigged characters — to make the visuals richer? I'd like more varied arrangements of foreground, mid-ground, and background elements to give the 2D visuals a more 3D-like effect.)
+
+### Agent Response Summary
+Planned in plan-mode (4 Explore agents + the art bibles). Found the depth system was real but under-used: only 2 art bands (far scenes 0.15/-22, hanging clutter 0.40/-10) + world lamps, and `ART_DIRECTION.md` already SPEC'd a Foreground (~1.3/60) and Backdrop-near (~0.30/-14) band that were never built. The "rigged character" precedent already existed (`ScriptedBlackout.BuildShades` multi-part figure + `SilhouetteArt` rasterizer). Asked 3 questions; student chose: all four scope pieces, a real Unity 2D-bone (SpriteSkin) rig, and sparse/on-theme figures. Implemented as non-colliding scenery under the persistent `_Backdrop` (gameplay byte-for-byte untouched):
+1. **Two new parallax bands** in `BackdropBuilder`: `BuildNear` (`Layer_Near`, factor 0.30, sort -14, art `bn_*.png` else far-scenes reused smaller) — tinted like the backdrop; `BuildForeground` (`Foreground`, factor 1.25 + vert-follow 0.92, sort 60 > player, art `fg_*.png` else thin code silhouettes: drooping cables / enlarger arm / print edge) — sparse + edge-biased so footing is never ambiguous (Closure/Contrast rule). Five distinct band speeds (0.15/0.30/0.40/1.25 + world) is the 3D cue.
+2. **Sparse silhouette figures** (`BackdropFigures` + `RigActor` + `CharacterRig`): 3 deep figures (a swaying worker @x20, seated watchers @x68/@x112) — NONE in the prologue ("she walks alone") or the R9 corridor (already has 3 shades). Each tries `Resources.Load<GameObject>("Characters/<Kind>")` (an authored SpriteSkin rig prefab); if absent → a code puppet (a `SilhouetteArt` body + a shoulder-jointed swinging arm) animated by `RigActor` (arm swing + body bob, à la `PlayerAnimator`/`ScriptedBlackout`). Faceless per the art bible; only the watcher gets a faint WHITE eye-glint (GlowMat, never red).
+3. **`BackdropTint` generalized**: the MidGround Over-fade now covers a `FadeRoots = {MidGround, Foreground, Figures}` set, so all constant-dark bands fade out in the bright Over world (they'd read as black blobs). Alpha is owned solely by BackdropTint, so `RigActor` stays transform-only and the two never fight.
+4. **Drop-in AI-PNG pipeline**: `PixelArt` got `BackdropNear`/`ForegroundCutouts`/`FigureCutouts` auto-discovery loaders (`bn_*`/`fg_*`/`char_*`, mirroring `bd_*`/`mid_*`, via a shared `GlobArt` helper); `process_aigen.py` got `bn_`/`fg_`/`char_` branches; added `FOREGROUND_PROMPTS.md` + `CHARACTER_PROMPTS.md`. `VisualFactory` got `OrderNear/-14`, `OrderFigure/-8`, `OrderForeground/60`. SpriteSkin authoring (bones+weights in the Skinning Editor → prefab in `Resources/Characters/`) is the one in-editor step; the code puppet shows until then.
+
+### Files / Mechanics Changed
+NEW: `Core/CharacterRig.cs`, `World/RigActor.cs`, `World/BackdropFigures.cs` (+ hand-made `.meta`s, Editor open), `art-pipeline/FOREGROUND_PROMPTS.md`, `art-pipeline/CHARACTER_PROMPTS.md`. MODIFIED: `Level/BackdropBuilder.cs` (BuildNear/BuildForeground + helpers, wired into Build), `World/BackdropTint.cs` (FadeRoots), `Core/PixelArt.cs` (3 globbed loaders + GlobArt), `Core/SilhouetteArt.cs` (pivot-capable ToSprite + Worker/Watcher/Arm figures), `Core/VisualFactory.cs` (3 sort constants), `art-pipeline/process_aigen.py` (bn_/fg_/char_ branches). No collider/LevelData/validator change (backdrop is separate from the level root; validator doesn't inspect it).
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`); `process_aigen.py` parses clean. Batchmode validator deferred (Editor open) — no level-root change so counts/seams are unaffected.
+
+### Student Follow-up
+(⌘R BEFORE ⌘P. You should now see depth: far scenes, a nearer scene band, hanging clutter, the lamps, and an out-of-focus foreground all scrolling at different speeds; 3 distant silhouette figures (a worker's arm working, two seated watchers) deep behind the play space, white eyes only, that FADE OUT in Over. Tunables: figure placement/scale/parallax in `BackdropFigures.Figures`; foreground density in `BuildForeground`'s step; near-band scale/parallax in `BuildNear`. To add the REAL SpriteSkin rig: follow the note at the bottom of `CHARACTER_PROMPTS.md` — author a bone rig and save it as `Resources/Characters/Worker.prefab`/`Watcher.prefab` and `RigActor` swaps the puppet for it automatically. To drop in AI art: `bn_*`/`fg_*`/`char_*.png` into `StreamingAssets/art/`, run `process_aigen.py`, ⌘R. If the foreground ever hides footing, lower its alpha or widen the step; if figures feel too present, cut `BackdropFigures.Figures` to one or two.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 94 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Figure sprites created + cutout tier wired (Milestone 22.1)
+**Current Goal:** Student: "help me find or create a figure sprite" (for the M22 figure system).
+
+### Student Prompt
+(help me find or create a figure sprite)
+
+### Agent Response Summary
+Created the sprites procedurally (PIL, in the art-pipeline) rather than sourcing external art, to honor the locked silhouette aesthetic. First found+fixed a gap from M22: the `char_*.png` loader existed in `PixelArt` but nothing consumed it — `BackdropFigures` only used the Resources rig prefab or the code puppet. Replaced `PixelArt.FigureCutouts` (glob list) with `PixelArt.FigureCutout(kind, ppu)` (single `art/char_<kind>.png`, bottom-pivot, cached incl. null) and added a CUTOUT TIER to `BackdropFigures.BuildOne`: **rig prefab > char_<kind>.png cutout > code puppet**. `BuildCutout` scales the cutout to the puppet's world height (bottom-pivot keeps feet on the line) and gently bobs it (the arm is part of the cutout, so no separate swing).
+
+New generator `art-pipeline/gen_figures.py`: draws clean cut-paper silhouettes from tapered capsules + discs, supersampled→LANCZOS-downsampled for AA, with a cool LEFT rim (matches `SilhouetteArt.Body 0x0A0A0C` / `Rim 0x2A2A30`), autocropped with feet at the bottom row, facing right. Outputs `char_worker.png` (stooped worker, flat cap, near arm bent forward over a bench) and `char_watcher.png` (hunched seated figure, head bowed over drawn-up knees). Saved straight into `StreamingAssets/art/` (already near-black + transparent → do NOT run process_aigen on them). Iterated once on a preview (`_preview_figures.png`): widened/bent the worker's working arm; rebuilt the watcher from a 3-disc "snowman" into a readable hunched seated form. These are also the import source for the optional SpriteSkin rig (limbs drawn with gaps for clean auto-geometry/auto-weights).
+
+### Files / Mechanics Changed
+NEW: `art-pipeline/gen_figures.py`, `Assets/StreamingAssets/art/char_worker.png` + `char_watcher.png` (+ DefaultImporter `.meta`s, Editor open). MODIFIED: `Core/PixelArt.cs` (`FigureCutout(kind,ppu)` replaces the glob), `World/BackdropFigures.cs` (cutout tier + `BuildCutout`). No collider/validator change.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`); generator runs (worker 267×851, watcher 333×432); preview verified visually.
+
+### Student Follow-up
+(⌘R then ⌘P — the worker now stands at x≈20 and the watchers at x≈68/112, using the new PNGs (the code puppet only shows if a PNG is missing). To re-tune the look, edit the coords in `gen_figures.py` and re-run `python3 art-pipeline/gen_figures.py`. To go further: drop your own `char_worker.png`/`char_watcher.png` (any source — AI via CHARACTER_PROMPTS.md, or CC0) in `StreamingAssets/art/`, or build the full SpriteSkin rig from these and save it as `Resources/Characters/Worker.prefab`. Want a third pose (e.g. a standing figure facing away) or different placement? Say the word.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 95 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Edit-mode scene preview baker — see & drag elements without Play (Milestone 22.2)
+**Current Goal:** Student: 可否将场景永久生成,而不是每次按 Play 才有,方便手动调整各个元素位置 — wanted to position elements (incl. exposure-gated / "develops-solid" platforms) in the editor.
+
+### Student Prompt
+(可否将场景永久生成,而不是每次我按 play 才有,这样方便我手动调整各个元素的位置)
+
+### Agent Response Summary
+Confirmed feasibility (the validator already runs `LevelBuilder.Build` in edit mode; `LightDirector.CreatePoint` is a pure static; ParallaxLayer/BackdropTint/Drift only act in Play). Flagged the real catch: the art is **runtime-generated in-memory textures**, so a plain "save into the scene" loses every sprite ref on recompile/reopen. Asked approach + scope; student chose **edit-mode rebuildable preview** over asset-baking, scope = **full scene incl. the Under/Over-gated and latent (flash-to-develop) platforms**.
+
+Built `Editor/DarkroomSceneBaker.cs` ([InitializeOnLoad]) with menu items under **Darkroom/**:
+- **Build Scene In Editor** — clears any prior preview, runs `BackdropBuilder.Build()` + `LevelBuilder.Build(Bootstrap.BuildThroughRoomCount)` in edit mode, tags roots, and **force-shows the gated/latent platforms** (in edit mode `ExposureObject.OnEnable` applies NORMAL → DarkPath α0, and `FixPlatform.Awake` sets α0.16, so they'd be invisible; `ForceVisible` lifts every `ExposureObject`/`FixPlatform` renderer to α0.85). Selects `_Backdrop`.
+- **Clear Generated Scene** — destroys everything tagged with the new `World/DarkroomPreviewMarker`.
+- **Log Element Positions** — prints figures as **paste-ready `Spec(...)` lines** for `BackdropFigures.Figures[]` (reads localPosition + ParallaxLayer.Factor + Visual scale/flip) and the current selection as name/world-pos/scale; also writes `art-pipeline/_layout_dump.txt`. This is the path to make a tuned position permanent at runtime (drag → Log → fold values into the builders/data).
+
+Safety: preview roots are `HideFlags.DontSave` (never serialised, dropped on domain reload — it's a *rebuildable* preview, not a saved scene), and entering Play auto-clears the preview via `playModeStateChanged(ExitingEditMode)` so Bootstrap's runtime build never doubles the scene. No Bootstrap/runtime-builder edits needed (the existing `_Backdrop` Find-guard + the new clear-on-play cover it).
+
+### Files / Mechanics Changed
+NEW: `Editor/DarkroomSceneBaker.cs`, `World/DarkroomPreviewMarker.cs` (+ metas). No changes to existing builders, Bootstrap, colliders, or LevelData. Offline compile harness extended to cover Editor scripts (UnityEditor.CoreModule.dll module-form ref; fixed Unity-6.4 `FindObjectsByType(FindObjectsSortMode)` deprecation → `FindObjectsByType(FindObjectsInactive.Include)`).
+
+### Immediate Result
+Offline compile clean BOTH tiers: `RUNTIME COMPILE OK` and `EDITOR COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(In Unity: menu **Darkroom ▸ Build Scene In Editor** — the whole world appears in the Scene view WITHOUT pressing Play, with the Under/Over-only and flash-to-develop platforms forced visible so you can position them. Drag anything. To make positions stick: select what you moved (or just the figures) → **Darkroom ▸ Log Element Positions** → it prints ready-to-paste values (and writes art-pipeline/_layout_dump.txt); send them to me or paste figure Spec lines into BackdropFigures. **Darkroom ▸ Clear Generated Scene** removes it. Note: it's a *rebuildable preview* — it auto-clears on Play and on script recompile (the art is generated in memory), so just rebuild. If instead you want a TRULY permanent saved scene, say so and I'll add the heavier asset-baking path (saves the generated sprites as real assets).)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 96 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** First round-trip: editor-tuned platform positions baked into data (Milestone 22.3)
+**Current Goal:** Student used the M22.2 edit-mode preview to drag two latent platforms and wanted the new positions made permanent.
+
+### Student Prompt
+(我 log 了 / 我应该改了两个平台,人物没改 / 另外一个也好了 — logged element positions after dragging two platforms in the editor preview.)
+
+### Agent Response Summary
+Closed the preview→data loop. Read `art-pipeline/_layout_dump.txt` across two captures (selection-based): `R8_LatentStep` (112.4, 8.2) and `R7_LatentLedge` (102.9, 5.3). Confirmed both differ from the authored `FixDef` values, so the student really moved them. Baked both into `LevelData.fixPlats`: R7 104.2,5.6 → 102.9,5.3; R8 111.5,6.6 → 112.4,8.2 (updated the x-range/top comments too). fixPlats count stays 5 (validator unaffected). FLAGGED the gameplay risk: these are load-bearing print-to-develop footings with tight margins — R7's slab→ledge(7.5) hop grows 1.7→2.0 (slab dropped to top 5.5) and shifts the print-from-floor distance; R8 (optional rung) rose 1.6, which can put it out of step/print range. Asked the student to playtest R7/R8 solvability; offered single-number revert/nudge.
+
+### Files / Mechanics Changed
+`Level/LevelData.cs` (R7_LatentLedge + R8_LatentStep FixDef coords + comments). No other change.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`).
+
+### Student Follow-up
+(⌘R then ⌘P. R7/R8 latent slabs now sit where you dragged them. PLEASE verify both are still solvable — R7's slab→ledge jump is now +2.0 (may be too high) and the print-from-floor distance changed; R8 rose 1.6 (may be out of print/step range). If either breaks, it's a single-number fix or a revert. Reminder: dragging in the editor preview is a *view* — these took effect at runtime only because the values were baked here into LevelData.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 97 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Bugfix — edit-mode preview leaking into Play (Milestone 22.4)
+**Current Goal:** Student hit bugs after using the preview: bridges visible outside Under, and burned walls still blocking.
+
+### Student Prompt
+(出 bug 了,有些地方不 under 也有桥,然后墙烧了也过不去)
+
+### Agent Response Summary
+Diagnosed as the M22.2 edit-mode preview LEAKING into Play (a duplicated level). The preview's `ForceVisible` lifts every ExposureObject (incl. DarkPath bridges) to α0.85 and the copies aren't exposure-synced → "bridges show outside Under"; preview BurnPaper walls keep their collider (inert in edit mode, never burn) → a ghost wall overlaps the real one so "burned walls still block". The auto-clear on `playModeStateChanged(ExitingEditMode)` evidently didn't cover the student's setup (likely Domain Reload off, or Play entered with a preview present). Durable fix: `Bootstrap.Boot` now destroys any `DarkroomPreviewMarker` roots (DestroyImmediate, before building) so the runtime scene is never doubled regardless of domain-reload settings — no-op in real builds. Immediate user steps: Darkroom ▸ Clear Generated Scene → ⌘R → ⌘P. Not a regression from the R7/R8 coord bakes (those don't touch bridges/burn walls).
+
+### Files / Mechanics Changed
+`Core/Bootstrap.cs` (boot-time preview-marker cleanup before the build). No other change.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`).
+
+### Student Follow-up
+(Order matters: Clear Generated Scene, then ⌘R (so the new Bootstrap assembly loads — stale-assembly gotcha), then ⌘P. Under-only bridges and burnable walls should behave again. If a bug REMAINS after a clean ⌘R+⌘P with NO preview built, it's not the preview — tell me and I'll look at the actual bridge/burn objects. General rule now reinforced: the editor preview is a view-only scratchpad; never play with it present (Bootstrap now self-heals, but Clear first is the habit).)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 98 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Bugfix (root cause) — leftover build roots in the open scene leaked into Play (Milestone 22.5)
+**Current Goal:** Student: bridges visible outside Under, burned walls still block, AND all fore/mid/back scenery gone — Clear didn't help.
+
+### Student Prompt
+(还是不正常,我之前就是 clear 过了的...现在前中后景的东西也都没了,一起查查 → screenshots: no _Backdrop in Hierarchy, Console clean → confirmed fixed.)
+
+### Agent Response Summary
+Checked the scene files (Level01/SampleScene clean — student was actually in an unsaved "Untitled" scene). Added temporary `[Boot]`/`[BackdropBuilder]` Debug.Logs; the student's Console proved it: `previews cleared=0; _Backdrop pre-existing=6 children` → `[BackdropBuilder] SKIPPED — _Backdrop already exists`. ROOT CAUSE: a baker-built `_Backdrop` (+ `_Level`) was left in the open edit scene and its `DarkroomPreviewMarker` was lost across recompiles (so the marker-based Clear/boot-cleanup missed it). At Play it made `BackdropBuilder.Build` hit its `GameObject.Find("_Backdrop")` guard and SKIP (stale zombie backdrop → "scenery gone"), while `LevelBuilder.Build` (no guard) built a SECOND `_Level` over the stale one → duplicate level → ghost bridges (forced-visible, not exposure-synced) + duplicate burn walls (burn the real one, the ghost still blocks). One root cause, all three symptoms. `DontDestroyOnLoad` is used nowhere in our code (the Hierarchy's `DontDestroyOnLoad/[Debug Updater]` is Unity's own).
+
+FIX: `Bootstrap.Boot` now destroys any pre-existing `_Backdrop`/`_Level`/`_HUD` (by marker AND by name) before building, so Play always builds fresh regardless of editor leftovers (no-op in real builds). `DarkroomSceneBaker.Clear` also clears the build roots by name now (so a marker-lost leftover is still wiped by Darkroom ▸ Clear Generated Scene). Student confirmed fixed; removed the temp diagnostics afterward.
+
+### Files / Mechanics Changed
+`Core/Bootstrap.cs` (boot-time destroy of leftover `_Backdrop`/`_Level`/`_HUD` by marker+name), `Editor/DarkroomSceneBaker.cs` (`Clear` now also removes build roots by name; `BuildRoots` list). Reverted the temporary `[Boot]`/`[BackdropBuilder]` logs.
+
+### Immediate Result
+Student confirmed in-engine: scenery back, Under-only bridges, burnable walls. Offline `csc` clean (`COMPILE OK`, `-warnaserror`).
+
+### Student Follow-up
+(好嘞,修好了. Habit going forward: work in Assets/Scenes/Level01, not an Untitled scene; the editor preview is view-only — Darkroom ▸ Clear Generated Scene (now name-based) before saving/closing, though Boot now self-heals at Play regardless.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 99 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Direction — lifting the "code-only / zero-asset" constraint; glow-up vision (Milestone 23, planning)
+**Current Goal:** Student wants to abandon the self-imposed "build only from code / no external assets" rules and boldly imagine how to make the game more beautiful.
+
+### Student Prompt
+(然后我觉得可以抛弃"只使用代码构建"和"不用外部素材"这种陈旧规矩,大胆设想怎么能让游戏更加精美)
+
+### Agent Response Summary
+Reframed: the constraint to drop is the ENGINEERING rule (code-only/zero-asset); the SOUL to keep is STORY_CONCEPT's locked aesthetic (chiaroscuro, faceless silhouettes, single concealed light, reserved red, photographic develop). Ran a 6-lens ideation workflow (shaders/postfx, lighting/materials, depth/atmosphere/vfx, characters/animation, audio, ui/cinematics) — each read ART_DIRECTION.md + STORY_CONCEPT.md + the relevant code and returned on-theme upgrades with impact/effort/risk (40 ideas). Synthesized into tiers:
+- SIGNATURE (share one new URP Full-Screen Pass Renderer Feature): (1) Sabattier solarization on every exposure switch (the core verb becomes chemistry, §2), (2) authored emulsion grain + red-biased CineStill halation (retire URP FilmGrain), (3) diegetic film-gate border + sprockets + film-advance room transition synced to the ratchet, (4) bone-rig the girl + shades (SpriteSkin already installed; CharacterRig.Load entry already stubbed), shade-wake = red-halation jointed lurch.
+- DEPTH/LIGHT: normal maps + ShadowCaster2D (shadow-as-platform literal), light cookies (window gobo / enlarger cone), god-ray shafts, chemical vapor + tray caustics, commit develop-bloom particles.
+- NARRATIVE IMAGE: 11th frame truly blank → exponential develop, eyes last, Rembrandt gold (small change, big payoff); real contact-sheet win screen w/ grease-pencil marks (TMP); Timeline+Cinemachine prologue/finale (both packages installed, unused).
+- AUDIO: FMOD adaptive backbone (exposure = one global param → snapshots) OR code AudioMixer snapshot fallback; developing leitmotif across 11 frames; Basinski decay arc; OVER-gated shade threat layer; recorded foley + shutter/ratchet signature.
+Recommended first slice: signature 1+2+3 (shared render-feature infra, hits the highest-frequency verb, no heavy art production), rig (4) in parallel. Guardrails reiterated: red stays reserved (halation red only on true over-exposure/threat), gameplay plane stays razor-sharp (Closure/Contrast), keep systemic things procedural — authored assets only for one-off beauty. Asked the student which thread to turn into a formal plan.
+
+### Files / Mechanics Changed
+None (ideation/direction only). Workflow output archived in the run transcript.
+
+### Immediate Result
+Vision blueprint delivered; awaiting the student's chosen first thread before implementation.
+
+### Student Follow-up
+(Pending: pick a thread — full-screen render feature (Sabattier + grain/halation) vs the lighter film-gate border/transition vs the character bone-rig — and I'll write it up as a concrete plan.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 100 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Glow-up program kickoff — W1 film gate shipped, rig track handed off (Milestone 23.1)
+**Current Goal:** Student approved implementing ALL the glow-up ideas ("全部实施"), and said tell them what to do manually for the real skeletal rig.
+
+### Student Prompt
+(所有建议都很好,全部实施,上真骨骼如果需要我操作就告诉我)
+
+### Agent Response Summary
+Framed the program as 6 waves tracked as tasks (W1 film-gate, W2 fullscreen render-feature: Sabattier + grain/halation, W3 character bone rigs, W4 lighting/materials, W5 narrative-image/cinematics, W6 audio adaptive backbone). Code-side I do + compile-verify each wave; the manual/content steps (rigging, FMOD choice, recording foley, painting backdrops, attaching the URP Renderer Feature) get handed to the student as checklists to run in parallel.
+
+Shipped W1 — the diegetic FILM GATE (UI top pick, low-risk, reframes the whole game): `PixelArt.SprocketCell` (a near-void film-base cell with a soft rounded perforation) + `HUDController.BuildFilmGate()` — two 26px film-base margins down the screen edges with stacked 35mm sprockets, and an engraved Mono edge-code in the bottom margin that counts the roll (prologue = "—", frames = "01A".."10A"), wired into the existing per-room block. Built early (low sibling index) so it sits behind the readable HUD; monochrome, introduces no red (can't break the red rule); thin + low-value so it never occludes footing (§5 "film-base border the camera never crosses").
+
+Handed off the W3 rigging steps (Skinning Editor on char_worker.png → bones → auto-weights → prefab w/ Animator → Resources/Characters/Worker.prefab; RigActor.SetRigged already routes motion to the prefab Animator, CharacterRig.Load already wired). Noted the player-girl rig needs a girl source sprite I'll generate next.
+
+### Files / Mechanics Changed
+`Core/PixelArt.cs` (SprocketCell), `UI/HUDController.cs` (_edgeCode field, BuildFilmGate(), per-room edge-code). No gameplay change.
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`). W1 task complete (pending in-engine visual tune).
+
+### Student Follow-up
+(⌘R → ⌘P: the screen edges now carry film sprockets + a frame edge-code; tunables = margin width / cell size / spacing in BuildFilmGate, sprocket tone in PixelArt.SprocketCell. Next code wave W2 = the fullscreen Sabattier+grain/halation render feature (URP17 RenderGraph; needs a one-time manual "add Renderer Feature to the URP Renderer asset" + in-engine iteration). Parallel: student starts the W3 rig in the Skinning Editor.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 101 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** W1 reworked to transient gate + checkpoint redesign (Milestone 23.2)
+**Current Goal:** Student: make the film gate appear only transiently at each checkpoint (frame advance), redesign the checkpoint visual, and then do all remaining waves in one push.
+
+### Student Prompt
+(W1 的片门可以只在每个存档点,也就是进入下一关时渐显,然后消失,同时也把存档点那个东西也设计的好一点。然后剩下的都一鼓作气做了)
+
+### Agent Response Summary
+Reworked W1: the film gate is no longer a permanent border. Wrapped it in a CanvasGroup (`_gateGroup`, alpha 0) and added `HUDController.RevealFilmGate()` → fade in 0.4s / hold 1.6s / fade out 0.9s — the film "advancing through the gate" at each checkpoint. Triggered from `Checkpoint.OnTriggerEnter2D` (first touch only).
+
+Redesigned the checkpoint from the crude 8px `CheckpointMarker` into a print pinned on the drying line: `LevelBuilder.CheckpointAt` now composes cord + clothespin + a `PixelArt.PrintFrame` (paper border + photo window, Polaroid bottom margin) + a soft glow (off). It hangs as a COOL undeveloped negative; on arrival `Checkpoint.Develop()` warms it to a finished print, raises the glow to 0.5, snaps the clip (sin punch), bursts a warm StrokeSparkle, and plays PlayFilmAdvance (ratchet) + PlayDevelop. Part refs injected by the builder (Frame/Glow/Clip), all null-guarded; develop/capture/gate fire once via `_developed`, but the respawn point still refreshes on re-touch.
+
+Set expectation for "do it all": proceeding through W2–W6 autonomously (not pausing per wave); code I do + compile-verify, content/manual steps (rigging, FMOD choice, recorded foley, painted art, attaching the URP Renderer Feature) batched as checklists.
+
+### Files / Mechanics Changed
+`Core/PixelArt.cs` (PrintFrame sprite), `UI/HUDController.cs` (gate CanvasGroup + RevealFilmGate/FilmGateRoutine), `Level/LevelBuilder.cs` (CheckpointAt redesign w/ injected part refs), `World/Checkpoint.cs` (Develop coroutine + gate trigger). Old `PixelArt.CheckpointMarker` now unused (left in place).
+
+### Immediate Result
+Offline Tier-1 `csc` clean (`COMPILE OK`, `-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P: reach a checkpoint — the hanging print develops cool→warm with a clip-snap, glow and ratchet, and the sprocket gate winds in then away. Tunables: FilmGateRoutine timings, Checkpoint.Develop dur/colors, CheckpointAt part positions, PrintFrame art. Continuing to W2 (fullscreen Sabattier+grain/halation render feature — will need a one-time "attach Renderer Feature to URP Renderer asset" + in-engine tuning) and W3 rig is the student's parallel manual track.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 102 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Checkpoint print resized + W2 fullscreen photographic pass (Milestone 23.3)
+**Current Goal:** Student (with screenshot): the checkpoint print is too narrow — make it smaller + more square — then continue with W2.
+
+### Student Prompt
+(W1 存档点这个相纸感觉太窄了,可以稍小一点然后偏正方形一点。然后接着做剩下的 W2 等)
+
+### Agent Response Summary
+Print fix: `PixelArt.PrintFrame` 40x52→**44x46 (near-square), ppu 64→80 (smaller)**, photo window re-inset for a Polaroid bottom margin; `CheckpointAt` part offsets retuned (cord y1.2/h0.6, clip y0.86, glow 1.05²).
+
+W2 (Renderer-Feature route, per the student's choice) shipped as code: `Assets/Resources/DarkroomPost.shader` (fullscreen URP Blit shader — Sabattier solarization fold + Mackie edge on exposure-switch, 8-tap red-biased halation, shadow-weighted animated grain; all gated by global floats), `Core/DarkroomPostFeature.cs` (ScriptableRendererFeature + URP17 **RenderGraph** pass: AddBlitPass src→dest, requiresIntermediateTexture, swaps resourceData.cameraColor; shader found by name so no material asset to wire; no-ops if shader missing), `Core/DarkroomPostDriver.cs` (sets `_DR_Solar` pulse on each switch + `_DR_Grain/_DR_Halation/_DR_HalRed` lerped per exposure — halation reddens ONLY in Over, honoring the reserved-red rule), wired into Bootstrap managers. Audio chosen earlier = pure-code AudioMixer (W6, later). W2 needs ONE manual step: add the feature to `Assets/Settings/Renderer2D.asset`, then in-engine param tuning.
+
+### Files / Mechanics Changed
+`Core/PixelArt.cs` (PrintFrame), `Level/LevelBuilder.cs` (checkpoint part offsets), NEW `Resources/DarkroomPost.shader`, `Core/DarkroomPostFeature.cs`, `Core/DarkroomPostDriver.cs` (+ metas), `Core/Bootstrap.cs` (+DarkroomPostDriver).
+
+### Immediate Result
+Offline clean: feature-only compiled against URP runtime+core (`FEATURE OK`, validating the RenderGraph API), then full runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(Manual step for W2: ⌘R → select Assets/Settings/Renderer2D.asset → Add Renderer Feature → "Darkroom Post Feature" (leave the Shader field empty; it auto-finds Darkroom/Post) → ⌘P. Expect: a solarization flick on each exposure switch, constant fine grain, halation that reddens in Over. We then tune DarkroomPostDriver amounts + shader constants in-engine. Continuing to W4/W5 code next; W3 rig remains the student's parallel track.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 103 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** W2 bugfix — black screen on the 2D renderer; pivot to built-in Full Screen Pass (Milestone 23.3a)
+**Current Goal:** Student added the custom DarkroomPostFeature to Renderer2D and the whole screen went black (audio + control still worked).
+
+### Student Prompt
+(我加上了,但是画面全黑,有声音也能操控)
+
+### Agent Response Summary
+Diagnosed: the game still runs (audio/input), so the custom RenderGraph fullscreen pass output black. Root cause: the project uses the URP **2D Renderer**, where a custom ScriptableRendererFeature that swaps `resourceData.cameraColor` is unreliable (the final present can end up showing the unwritten/culled destination — black). The docs blit example targets the 3D Universal Renderer. Pivoted to Unity's **built-in Full Screen Pass Renderer Feature**, which officially supports the 2D renderer and composes correctly. Deleted `Core/DarkroomPostFeature.cs` (+meta); kept `Resources/DarkroomPost.shader` and `Core/DarkroomPostDriver.cs`. Also corrected the shader sampling to the X-macro (`SAMPLE_TEXTURE2D_X(_BlitTexture, ...)`) — the correct contract for `_BlitTexture` (and for the built-in feature). The shader's structure (Blit.hlsl Vert + Frag(Varyings):SV_Target sampling `_BlitTexture`) matches the built-in feature's expectations.
+
+New manual path: ⌘R → remove the now-missing "Darkroom Post Feature" slot → create a Material from Darkroom/Post → add the built-in "Full Screen Pass Renderer Feature" with that material (Injection = After Rendering Post Processing, Requirements = Color). DarkroomPostDriver still drives the globals.
+
+### Files / Mechanics Changed
+DELETED `Core/DarkroomPostFeature.cs` (+meta). `Resources/DarkroomPost.shader` (SAMPLE_TEXTURE2D → _X). Kept driver + Bootstrap wiring.
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(Safety: removing/disabling the feature always returns the screen to normal — you're never stuck black. Steps: ⌘R; on Renderer2D remove the missing custom feature; right-click DarkroomPost.shader → Create → Material; Add Renderer Feature → Full Screen Pass Renderer Feature → Pass Material = that material, Injection = After Rendering Post Processing, Requirements = Color; ⌘P. If still black with the BUILT-IN feature, that's an injection/requirements issue — try Before Rendering Post Processing, or report and I'll switch to a culling-disabled RasterRenderPass.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 104 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** W2 flash toned down · W5 11th-frame develop · W4 vapor atmosphere (Milestone 23.4)
+**Current Goal:** Student: the solarization flash on exposure switch is too bright — tone it down — then continue W4, W5.
+
+### Student Prompt
+(好嘞,切曝光时一道显影闪太亮了调一调,然后继续 W4,W5)
+
+### Agent Response Summary
+W2 flash toned down: `DarkroomPostDriver` solar pulse peak 1.0→**0.5** and decay 0.35s→**0.28s**; shader fold 0.85→0.7 and Mackie-edge add 0.6→**0.3**. (Built-in Full Screen Pass route from 103 confirmed working.)
+
+W5 — the 11th-frame finale reworked in `WinScreen` to the brief: removed the pre-ghost `SelfPortraitLatent` so the paper reads genuinely BLANK; the self-portrait now AMPLIFIES out of nothing (alpha = pow(t,1.9), exponential silver-halide curve) over 2.2s, cold→warm; the figure develops FACELESS (`SilhouetteArt.PlayerBlank`), and the glowing EYE — the punctum — is a separate glint+halo (PixelArt.Disc + SoftGlow) placed at the eye, revealed LAST (final 20%) with a soft develop click. (Barthes "eyes surface last", Rembrandt warm paper.)
+
+W4 — first atmosphere pass: new `World/VaporMotes.cs` — faint cool chemical-vapor wisps (SoftGlow, α0.025–0.06) drifting slowly UPWARD, camera-tracked + wrapping like DustMotes; added to the camera in `Bootstrap.SetupCamera`. Purely cosmetic.
+
+### Files / Mechanics Changed
+`Core/DarkroomPostDriver.cs` (solar peak/decay), `Resources/DarkroomPost.shader` (fold/Mackie down), `UI/WinScreen.cs` (blank→exponential develop, faceless body + eye-last glint), NEW `World/VaporMotes.cs` (+meta), `Core/Bootstrap.cs` (+VaporMotes on camera).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P. Flash is now a restrained flick (tunables: DarkroomPostDriver `_solar` peak + decay, shader fold/Mackie consts). Faint vapor haze rises across the view immediately. The 11th-frame finale shows on WIN: blank paper → exponential develop → eye ignites last. Next: more W4 (god-ray shafts + ShadowCaster2D need in-engine tuning), W6 audio (code AudioMixer snapshots), and the W5 contact-sheet grease-pencil marks. W3 rig stays the student's parallel track.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 105 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** W2/W4/W5 polish — kill the flash, make grain+vapor visible, declutter the win UI (Milestone 23.5)
+**Current Goal:** Student (win-screen screenshot): exposure switch should be a colour transition only (no flash); vapor + emulsion grain aren't visible; the final win-screen UI overlaps/looks messy.
+
+### Student Prompt
+(显影调成颜色的过渡就行,不要闪了。蒸汽在哪里有,好像看不到啊,自研乳剂颗粒好像也看不到。然后最后一关 UI 有点混乱,先把这些修了)
+
+### Agent Response Summary
+1. NO FLASH: `DarkroomPostDriver.OnExposure` no longer pulses `_solar` (stays 0) — the exposure change rides PostFXDirector's colour grade alone; the shader's solarization branch is now inert. Kept grain+halation.
+2. GRAIN VISIBLE: bumped `_grainT` to Under 0.18 / Normal 0.15 / Over 0.10 (was 0.09/0.06/0.05) and changed the shader grain coord to per-pixel + properly animated (`uv * _BlitTexture_TexelSize.zw + _DR_Time * 91.7`, was `*0.5 + _DR_Time` — too fine + nearly static).
+3. VAPOR VISIBLE: `VaporMotes` alpha 0.025–0.06 → 0.12–0.22, count 9→11.
+4. WIN UI DECLUTTER: re-spaced WinScreen with clear gaps — margins -120/-150 (was -104/-140), LostCoda -188, DEVELOPED block 34→28pt at y-270 (was -256), TIME y-360, EXIF caption y112 (was 130, was colliding with TIME and the contact strip). No more overlaps among margins / LostCoda / DEVELOPED / TIME / EXIF / strip.
+
+### Files / Mechanics Changed
+`Core/DarkroomPostDriver.cs` (no solar pulse, grain up), `Resources/DarkroomPost.shader` (grain coord), `World/VaporMotes.cs` (alpha+count), `UI/WinScreen.cs` (layout y/size of margins, DEVELOPED, TIME, EXIF, LostCoda).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P. Exposure switch is now a clean colour fade (no flash). Grain should read across the scene; vapor wisps should be faintly visible rising. The win screen should no longer overlap. Tunables: grain `_grainT` in DarkroomPostDriver, vapor alpha in VaporMotes, win spacing in WinScreen. If grain is STILL invisible, the built-in Full Screen Pass may be sampling pre-grade — tell me and I'll move injection. Next: continue W4 (god-ray/ShadowCaster2D) + W6 audio.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 106 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** W4 vapor reworked from "dust dots" into ethereal mist (Milestone 23.5a)
+**Current Goal:** Student: the vapor reads as round dust dots — it should be ethereal/flowing.
+
+### Student Prompt
+(这个像灰尘一样的是蒸汽吗,不应该是飘渺的,流动的那种吗)
+
+### Agent Response Summary
+The old vapor used round SoftGlow discs → read as big dust dots. New: a dedicated `PixelArt.VaporWisp` sprite (128x64, elliptical falloff × value-noise, feathered to nothing → an irregular elongated cloud), and `VaporMotes` rewritten for ethereal motion — 7 LARGE stretched wisps (scale ~3-6 × 1.2-2.6, random tilt), faint base alpha 0.05-0.11, slow rise + sideways sin sway + slow rotation + per-wisp alpha BREATHING (form/dissipate) so overlapping wisps build a flowing haze instead of discrete dots.
+
+### Files / Mechanics Changed
+`Core/PixelArt.cs` (VaporWisp noisy elongated cloud sprite), `World/VaporMotes.cs` (rewrite: wisp sprite, stretch/tilt, sway, rotate, alpha breathing).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P: vapor now drifts as soft, breathing, flowing wisps rather than round dots. Tunables in VaporMotes: Count, scale ranges, _baseA (alpha), DriftVel (rise speed), sway 0.06 / breathe speeds / rot speeds; and PixelArt.VaporWisp noise/shape. If it's too busy, drop Count or _baseA. Next: continue W4 (god-ray/ShadowCaster2D) + W6 audio.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 107 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** W4 vapor → procedural FBM fog that gathers/disperses (Milestone 23.5b)
+**Current Goal:** Student: the wisp-sprite vapor still looks fake (a texture sliding around) — fog should gather and disperse.
+
+### Student Prompt
+(还可以再优化,雾应该是会聚散的,现在就这个贴图飘来飘去很假)
+
+### Agent Response Summary
+Replaced the sprite-wisp approach with a procedural-noise fog SHADER so the fog actually evolves (forms/dissipates) and flows internally. New `Assets/Resources/Fog.shader` ("Darkroom/Fog"): domain-warped 4-octave FBM sampled in WORLD space, evolved by `_Time` (the +t terms), contrasted (`saturate(d*1.8-0.55)`) so there are clear gaps and dense clumps that drift = gather/disperse; tint+density from the SpriteRenderer vertex colour; soft edge mask fades the quad. `VaporMotes` rewritten: 3 large quads parented to the camera (always in view), each a Fog material with a different `_Scale`/`_Speed`/`_Seed` for layered parallax depth; cool faint colour; no per-frame C# (the shader self-animates). Graceful no-op if the shader is missing (no grey rectangle). Sort 31-33 (hazes the scene, stays behind the player).
+
+### Files / Mechanics Changed
+NEW `Resources/Fog.shader` (+meta). `World/VaporMotes.cs` rewritten (3 camera-parented fog planes; dropped the wisp pool).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`). (Shader HLSL correctness verifies only in-engine.)
+
+### Student Follow-up
+(⌘R → ⌘P: fog should now billow, flow, and gather/disperse instead of dots sliding. Tunables: VaporMotes sr.color alpha (density) + Layers; Fog.shader _Scale (cell size) / _Speed (drift) / the `*1.8-0.55` contrast (how clumpy). If it's too thick/covers the screen, drop the alphas or raise the -0.55. If it renders magenta, the HLSL has an error — tell me. Still open: confirm the emulsion GRAIN is visible now. Next: W4 god-ray/ShadowCaster2D + W6 audio.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 108 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Grain made filmic + fog refinements (settling gradient, exposure tint) (Milestone 23.5c)
+**Current Goal:** Student asked what film grain should look like, and how to make the fog more natural/beautiful (already likes it).
+
+### Student Prompt
+(颗粒应该是什么样的,以及雾还能有什么地方做的更自然更漂亮吗,现在感觉已经挺不错)
+
+### Agent Response Summary
+Explained film grain: fine monochrome stochastic speckle, per-frame flicker (best seen in motion), strongest in mid/low tones and near-absent in highlights, screen-constant size. Made the grain more filmic in `DarkroomPost.shader`: weight now PEAKS in mid/low tones and fades in highlights (`w = saturate(1 - |luma-0.42|*1.6)`, was shadow-only ramp) and sampled slightly coarser (×0.75 res).
+
+Fog refinements: (1) `Fog.shader` vertical SETTLING gradient — `mask *= 0.55 + 0.45*(1-uv.y)` so the haze pools low and thins upward (heavier air). (2) `VaporMotes` now re-tints the fog per exposure — cool-blue in Under, warm in Over, neutral in Normal (lerped) — so the haze belongs to the room's light (subscribes to ExposureManager; tint kept in C#, no global → no black-fog risk).
+
+Offered further opt-in fog ideas (not yet built): light-reactive glow where lamp cones fall (volumetric), density anchored to the wet-side trays, a far thin layer + near wisp layer for more depth.
+
+### Files / Mechanics Changed
+`Resources/DarkroomPost.shader` (grain midtone-weighted + coarser), `Resources/Fog.shader` (vertical settling), `World/VaporMotes.cs` (exposure-reactive tint + listener).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P. Grain should read as a fine flicker over the mid-tones (crank DarkroomPostDriver _grainT to confirm, then dial back). Fog now pools low, thins up, and shifts cool/warm with the exposure. Optional next fog polish if wanted: glow near the lamp cones, tray-anchored density, extra depth layers. Continuing W4 god-ray/ShadowCaster2D + W6 audio otherwise.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 109 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Shader include bug fixed + fog depth layers + top-lit glow (Milestone 23.5d)
+**Current Goal:** Student (3 shader errors before play): DarkroomPost can't open Blit.hlsl; also wanted "fog glows near light" and "far + near fog layers for depth".
+
+### Student Prompt
+(运行前有三个bug,遇光发亮和多一层远景薄雾 + 一层近景丝雾:景深更强也做做)
+
+### Agent Response Summary
+BUGFIX: the 3 errors were `DarkroomPost.shader` failing to open `Packages/com.unity.render-pipelines.universal/ShaderLibrary/Blit.hlsl` — in URP 17 Blit.hlsl MOVED to the core package. Changed the include to `Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl`, and removed my own `float4 _BlitTexture_TexelSize;` (the core Blit.hlsl already declares it — would have been a redefinition). (Fog.shader only includes universal Core.hlsl, so it was unaffected.)
+
+FOG DEPTH: `VaporMotes` 3→5 layers driven by per-layer arrays — far (big slow soft clumps, sort 6, behind the scene) through near (fine fast wisps, sort 56, IN FRONT of the player) — `_Scale` 0.05→0.24, `_Speed` 0.03→0.12, alpha peaks mid (0.07/0.09/0.10/0.07/0.05). Real parallax depth.
+
+FOG "遇光发亮": `Fog.shader` now brightens + warms toward the TOP of the frame (`lit = 0.8 + 0.6*uv.y`, warm lerp by uv.y) — a cheap approximation of the overhead hanging lamps catching the haze (true per-lamp glow would need feeding light positions into the shader; offered as opt-in).
+
+### Files / Mechanics Changed
+`Resources/DarkroomPost.shader` (Blit include path → core; removed TexelSize redecl), `Resources/Fog.shader` (top-lit warm glow), `World/VaporMotes.cs` (5 depth layers via arrays).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`); include path verified pointing at the core package.
+
+### Student Follow-up
+(⌘R — the 3 shader errors should be GONE (Console clean), and the DarkroomPost grain/halation actually renders now (the feature was erroring out before). ⌘P: fog now has far→near depth (a wisp drifts in front of the girl) and brightens toward the lamps up top. Tunables: VaporMotes LScale/LSpeed/LAlpha/LSort arrays; Fog.shader `lit` glow. True per-lamp fog glow is an opt-in if wanted. Next: W4 god-ray/ShadowCaster2D + W6 audio.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 110 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Grain fixed — "broken TV static" → clean film grain (Milestone 23.5e)
+**Current Goal:** Grain now visible but reads as messy vertical-streak TV static.
+
+### Student Prompt
+(修好以后能看见颗粒了,但是感觉像电视机屏幕坏了一样,很杂乱)
+
+### Agent Response Summary
+Three causes of the "broken TV" look, all fixed: (1) the old `frac(p.x*p.y)` hash produces AXIS-ALIGNED STREAKS at large pixel coordinates → replaced with the robust Dave-Hoskins hash (`p3=frac(p.xyx*0.1031); p3+=dot(p3,p3.yzx+33.33); frac((p3.x+p3.y)*p3.z)`). (2) `_DR_Time` was `Time.time` (grows forever → the grain coord magnitude grows → precision drift → worsening streaks) → driver now sends `Random.value` (bounded [0,1], fresh per frame = clean film flicker). (3) amount too high → `_grainT` Under/Normal/Over 0.18/0.15/0.10 → 0.10/0.08/0.055; grain coord slightly coarser (×0.6).
+
+### Files / Mechanics Changed
+`Resources/DarkroomPost.shader` (Hoskins hash, coarser grain coord), `Core/DarkroomPostDriver.cs` (_DR_Time = Random.value; grain amounts down).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P: grain should now be a fine, even, flickering film tooth — no vertical streaks, not static-y. Tunables: DarkroomPostDriver _grainT (lower = subtler), shader grain coord ×0.6 (smaller = chunkier). If still too busy, drop _grainT to ~0.05. Next: W4 god-ray/ShadowCaster2D + W6 audio.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 111 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Grain animation — crossfade instead of discrete reseed (Milestone 23.5f)
+**Current Goal:** 60fps reseed felt too busy; 14fps hold-then-jump felt stuttery ("卡"). Wanted a better method.
+
+### Student Prompt
+(频率调低了又会觉得卡,有没有什么更好的办法)
+
+### Agent Response Summary
+The stutter came from the DISCRETE reseed (hold a static field N frames, then snap). Switched to a continuous TWO-SEED CROSSFADE: the shader samples two grain fields (`_DR_GrainA`, `_DR_GrainB`) and lerps by `_DR_GrainMix`, VARIANCE-NORMALISED (`* rsqrt((1-m)^2 + m^2)`) so grain intensity stays constant across the blend (no 0.5-point dimming pulse). `DarkroomPostDriver` advances `_gMix += dt*grainFps`; when it passes 1 it rolls B→A and draws a fresh B — so the field is always smoothly morphing, never held-then-jumped and never a 60fps boil. Rate is one knob: `grainFps` (default 16, public/Inspector-exposed). Removed the old `_DR_Time`/hold path.
+
+### Files / Mechanics Changed
+`Resources/DarkroomPost.shader` (two-seed variance-normalised crossfade; `_DR_Time` → `_DR_GrainA/B/Mix`), `Core/DarkroomPostDriver.cs` (crossfade advance + `grainFps` knob; dropped reseed-hold).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P: grain should now morph smoothly — neither boiling nor stuttering. One knob: DarkroomPostDriver.grainFps (lower = lazier morph, higher = livelier; ~10-20 is the filmic range). Amount still _grainT, coarseness still the ×0.42 in the shader. Next: W4 god-ray/ShadowCaster2D + W6 audio.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 112 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** W6 audio — per-exposure submix + Over-only shade threat layer (Milestone 23.6)
+**Current Goal:** Continue the program (audio). Student said grain is good, "continue".
+
+### Student Prompt
+(还不错,继续下面的内容)
+
+### Agent Response Summary
+Did W6 within the existing fully-procedural AudioDirector (no AudioMixer asset — can't be created at runtime; the "code-only" route). Two clearly-audible, low-risk, on-theme additions making the three exposures sonically distinct (STORY §3 "the three states are the master submix"):
+1. Per-exposure MUSIC low-pass: moved `_music` onto its own child GameObject with an `AudioLowPassFilter` (so SFX one-shots on the main object stay crisp). `HandleExposure` sets `_musicCutTarget` — Under 900Hz (muffled/sheltered), Normal 5000Hz, Over 22000Hz (open/exposed); `Update` glides `_musicLP.cutoffFrequency` toward it.
+2. Over-only predatory shade layer: new `_threat` source + `BuildThreatDrone()` (dissonant 58/61.4Hz minor-second beat under a 174Hz top + a slow 0.5Hz swell — dread, not a jump-scare), gated to OVER (`_threatTarget` = Over ? 0.06 : 0), ducked with the ambience bed. Under/Normal stay silent on the threat ("sleeping stone").
+
+### Files / Mechanics Changed
+`Core/AudioDirector.cs` (music on a child + AudioLowPassFilter driven per exposure; `_threat` source + `BuildThreatDrone()`; HandleExposure + Update wiring).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`). (Audio verifies by ear, not screenshot.)
+
+### Student Follow-up
+(⌘R → ⌘P, then switch exposures and LISTEN: Under should muffle/close the music (sheltered), Over should open it bright AND add a low dissonant dread drone; Normal sits between. Tunables in AudioDirector: `_musicCutTarget` cutoffs, `_threatTarget` level, BuildThreatDrone freqs. Remaining W6 (bigger): the developing leitmotif across 11 frames + Basinski decay arc. Remaining W4: god-ray shafts + ShadowCaster2D real shadows. Say which next.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 113 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** W6 audio — made the per-exposure difference audible w/o music + on laptops (Milestone 23.6a)
+**Current Goal:** Student: the audio change isn't obvious — is it on the loaded background music?
+
+### Student Prompt
+(好像不太明显,是加载背景音乐上的吗)
+
+### Agent Response Summary
+Confirmed: the low-pass was on the LOADED music (`_music` child) — so with no file in StreamingAssets/music it does nothing. Also the per-exposure beds were bass-heavy (hum 55Hz, threat 58Hz) which laptop speakers can't reproduce → "not obvious". Fix: lean on the always-on PROCEDURAL beds and give them audible mids. Boosted `_humTarget` 0.22→0.30 (Under), `_hissTarget` 0.12→0.17 (Over), `_threatTarget` 0.06→0.16 (Over). Added MID partials to `BuildThreatDrone` (220Hz + a dissonant 233Hz beat) on top of the sub-bass, so the Over dread is audible on laptop speakers regardless of music. Left the music low-pass in (a bonus when a music file is present; commented as such).
+
+### Files / Mechanics Changed
+`Core/AudioDirector.cs` (hum/hiss/threat levels up; BuildThreatDrone gains 220/233Hz mids).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P, switch to OVER and LISTEN — you should now clearly hear a bright hiss + a low dissonant dread drone (with an audible 220/233Hz beat) that are absent in Under/Normal. Under stays intentionally quiet/sheltered (mostly sub-bass, so near-silent on laptop speakers — that's by design; the contrast is "quiet shelter → exposed danger"). The music low-pass is a bonus that only bites if you drop an .ogg/.wav/.mp3 in StreamingAssets/music. Tunables: _humTarget/_hissTarget/_threatTarget. Next: keep going on W6 (developing leitmotif) or jump to W4 (god-ray/shadows)?)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 114 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** W6 — developing leitmotif across the 11 frames (Milestone 23.6b)
+**Current Goal:** Student asked if the developing leitmotif is hard; build a first version.
+
+### Student Prompt
+(挺好,W6发展型主题动机难做吗)
+
+### Agent Response Summary
+Answered: mechanically not hard (the per-room `SetRoomMood` hook already fires on frame entry; tone synthesis already exists) — the hard part is MUSICAL TASTE, which needs the student's ear since I can't hear it. Built a first version in AudioDirector: a 5-note A-minor-pentatonic phrase (A C E D C) of soft struck `BuildTone` bells, played one note at a time by a new `UpdateMotif` sequencer on a slow loop. Development by frame (`_motifStage`, latched to the max room so it never un-develops): `revealed = clamp(1 + (stage-1)/2, 1, 5)` — Frame 1 a single lone note, +1 note ~every 2 frames, full phrase by the late frames; a warm `BuildMotifPad` (A3/E4/A4) fades in from ~frame 5; the inter-phrase rest shortens as it develops (more present late). Soft (~0.10), ducked with the bed, silent in prologue/cinematic/win — rationed so it's fullest only near the self-portrait (STORY §3).
+
+### Files / Mechanics Changed
+`Core/AudioDirector.cs` (motif fields; build note clips + pad in Awake; `_motifStage` in SetRoomMood; `UpdateMotif` in Update; `BuildTone` + `BuildMotifPad`).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P and LISTEN across frames: early on, a sparse lone struck note every few seconds; as you advance, more of the phrase appears + a warm pad joins, fuller and more present toward the end. It's a first pass to tune BY EAR — tunables: MotifPhrase note set (swap the Hz for a different melody), note gap 0.72s, rest 5.5s, reveal rate `(stage-1)/2`, levels. Remaining W6: the Basinski decay arc (the bed audibly eroding toward the finale). W4 still open: god-ray/shadows. Tell me melody tweaks or which next.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 115 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** W4 — procedural volumetric god-ray shafts on the lamps (Milestone 23.7)
+**Current Goal:** Do W4, carefully designed to be as refined/natural as the fog.
+
+### Student Prompt
+(先做W4 吧,仔细设计,达到像雾一样精致自然的效果)
+
+### Agent Response Summary
+Matched the fog's procedural quality for light. New `Assets/Resources/LightShaft.shader` ("Darkroom/LightShaft"): an additive volumetric god-ray — a cone (narrow+bright at the bulb via `halfW = lerp(0.06,0.5,1-uv.y)`, soft squared edges), bright-near-source vertical falloff (`pow(uv.y,0.5)`), and FBM DUST sampled in world space scrolling/settling downward (`Fbm(wpos*scale + (seed, t*1.5))`, kept in [0.5,1]) so the beam reads as motes caught in light — alive, not a flat sprite. Tint/density from the SpriteRenderer vertex colour. Reused the proven Fog shader structure (Core.hlsl + Hoskins hash + FBM). Wired into `BackdropBuilder.Lamp`: replaced the flat `PixelArt.LightBeam` sprite with a shaft quad (2.6×5.6, top at the bulb, sort -5, warm `(1,0.90,0.72,0.40)`), each lamp a Material instance with randomised `_Speed/_Scale/_Seed`; graceful fallback to the old flat beam if the shader is absent. Cached `ShaftShader` getter. The chunky `beamDust` Drift motes are kept (complements the shader's fine dust).
+
+### Files / Mechanics Changed
+NEW `Resources/LightShaft.shader` (+meta). `Level/BackdropBuilder.cs` (ShaftShader cache; lamp beam → volumetric shaft with fallback).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`). (Shader HLSL verifies in-engine.)
+
+### Student Follow-up
+(⌘R → ⌘P: each lamp should now cast a soft cone with dust slowly drifting down inside it — light made volumetric, fog-quality. Tunables: in BackdropBuilder.Lamp the shaft `ssr.color` alpha (density), localScale (length/width), and `_Speed/_Scale`; in LightShaft.shader the cone `lerp(0.06,0.5,...)` and `pow(uv.y,0.5)` falloff. If 20 additive shafts read too bright, drop the alpha to ~0.28. Remaining W4: ShadowCaster2D real cast-shadows (harder/harsher — separate polish). W6 left: Basinski decay arc.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 116 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** W4 god-ray polish — soft bottom dissolve + dimmer (Milestone 23.7a)
+**Current Goal:** Central shaft too bright; the beam's end looked hard-cut.
+
+### Student Prompt
+(最中轴那一束光太亮了,然后光的末尾消失的有点奇怪,感觉被硬切了)
+
+### Agent Response Summary
+Hard-cut bottom: `vfall = pow(uv.y, 0.5)` ramps too steeply near 0 → visible edge. Changed to `smoothstep(0.04, 0.72, uv.y)` — flat at 0, so the beam dissolves softly to nothing (no edge). Too bright: lowered the shaft density alpha 0.40 → 0.24 (the central one read brightest because the additive shaft stacks on the bulb's HDR glow and sits under the camera centre).
+
+### Files / Mechanics Changed
+`Resources/LightShaft.shader` (vfall → smoothstep soft dissolve), `Level/BackdropBuilder.cs` (shaft alpha 0.40 → 0.24).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P: beam tails now dissolve softly, overall dimmer. Tunables: shaft alpha (→0.18 for fainter), LightShaft.shader smoothstep `0.72` (higher = bright band sits higher / dissolves sooner). If the SOURCE point is still too hot, that's the lamp's HDR bulb/srcGlow stacking — say so and I'll dial those. W4 remaining: ShadowCaster2D; W6 remaining: Basinski decay.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 117 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Opening UI fixes — cinematic chrome, hint timing, exposure-card gating + redesign (Milestone 24)
+**Current Goal:** Prologue reveal: a hint overlaps it, the top "bar" (slider) clips during the cinematic; the EXPOSURE card pops too early (R1-2); redesign the card.
+
+### Student Prompt
+(开头第一章这个 UI 先调一下,提示不应该这会儿还重合上;因为画幅变化顶部那个条被截了一段也很怪;关卡设计变化后第一二关下方又出现 normal 这些介绍很不合理;把他们调到应该出现的时刻,介绍卡片重新精心设计)
+
+### Agent Response Summary
+The bright screen = `GameManager.PrologueExitRoutine` (IsCinematic) showing the giant photo-paper; the gameplay HUD + the "Bring back the room." hint weren't hidden during it. Fixes in HUDController:
+1. CINEMATIC CHROME: a `_chromeAlpha` lerps to 0 when `IsCinematic || HasWon`; drives a new CanvasGroup on the exposure slider (the "top bar") so it fades out during the prologue reveal / finale. The hint bubble is now force-hidden while `IsCinematic` (Update + a guard in ShowHintNow) — no more overlap.
+2. CARD TIMING: `ShowCard` now requires `gm.HasFlash` (exposure only becomes a real 3-state choice once the Flash is acquired in R2/R3) and bails during cinematics — so it never pops in R1 just for the boot-granted Under/Normal toggle. Range simplified to x<48 (tutorial stretch).
+3. CARD REDESIGN: rebuilt as a darkroom contact-card — film-base panel + thin warm hairline, a sprocket accent down the left, an "E X P O S U R E" mono eyebrow over the state name (display face), the explanation, and three state DOTS (under=cold blue / normal=neutral / over=warm) with the current one lit (set in ShowCard).
+
+### Files / Mechanics Changed
+`UI/HUDController.cs` (_sliderCg + _chromeAlpha chrome fade; hint hidden during cinematics; ShowCard HasFlash gate + state-dot coloring + StateDotLit; BuildCard redesign with sprocket accent + dots; _cardDots field).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P, replay the prologue: during the paper-door reveal the slider + hint should fade away (clean cinematic); the EXPOSURE card no longer appears in R1 — it shows only after you pick up the Flash, restyled as a film card with lit state dots. If a "top bar" still clips in NORMAL play at some aspect (not the cinematic), tell me which element and I'll fix the safe-area. Next: ShadowCaster2D (W4) or Basinski decay (W6).)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 118 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Top HUD header scrim + centered exposure card (Milestone 24.1)
+**Current Goal:** The exposure card layout still poor (left-jammed); the top HUD feels incongruous (washes out on bright Over, three styles floating).
+
+### Student Prompt
+(暗房联系卡排版还是不太好,然后顶部 HUD 还是会有点不协调,怎么安排更合理)
+
+### Agent Response Summary
+Design rationale given + implemented:
+1. TOP HUD: added a `BuildTopScrim` — a full-width soft dark gradient (`PixelArt.TopGradient`, opaque at the top edge → transparent ~230px down) behind the room title / exposure slider / controls, so the header reads on ANY background (bright Over included) and the three elements cohere into one designed strip instead of floating chrome. Driven by a CanvasGroup `_topCg` faded with `_chromeAlpha` (gone during cinematics with the slider).
+2. CARD: rebuilt centered + balanced — symmetric sprocket accents down BOTH edges; centered "E X P O S U R E" mono eyebrow → state name (display, now state-TINTED via StateDotLit) → a centered row of three state dots (current lit) → centered body. 560×138, tidy breathing room (was the left-jammed 620-wide panel).
+
+### Files / Mechanics Changed
+`Core/PixelArt.cs` (TopGradient vertical-fade sprite), `UI/HUDController.cs` (_topCg + BuildTopScrim + call + chrome fade; BuildCard centered/symmetric redesign; ShowCard title state-tint).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`). (SilhouetteArt also gained split-rig sprites externally — the W3 player-rig work — unaffected.)
+
+### Student Follow-up
+(⌘R → ⌘P: the top now sits on a soft gradient header (readable on the bright Over wall); the exposure card is centered + balanced with a state-tinted name and a lit dot row. Tunables: TopScrim height 230 / color alpha 0.5 (stronger = darker header); card size/spacing in BuildCard. Next: ShadowCaster2D (W4) or Basinski decay (W6).)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 119 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Player split-rig + procedural secondary motion (W3 player-rig)
+**Current Goal:** Make the girl come alive — walking: skirt hem trails back + body leans forward; jump/land: skirt + hair swing. Student believed a "bone framework" was already in; design + wire it.
+
+### Student Prompt
+(考虑一下重新设计人物,我应该已经加入了骨骼框架,我想让走起来的时候裙摆会向后,身体会前倾。然后跳起来和落地的时候裙子、头发也会有摆动,该怎么设计和操作)
+
+### Agent Response Summary
+First corrected the premise: there was NO real skeleton. The player was a single baked silhouette (`SilhouetteArt.Girl()` → one 42×78 texture, skirt + bun baked in); `CharacterRig.cs` + the 2D Animation package were unused scaffolding (no `.prefab`, no `Resources/Characters/` on disk; the player never calls `CharacterRig.Load`). Student chose the **pure-code transform-joint** approach (no SpriteSkin / editor authoring) over Unity skinned bones.
+
+Implemented a split "code rig" driven by a spring-damper, reusing the project's own joint precedent (the background worker's top-pivot arm on a joint, `RigActor`/`BackdropFigures`, and the `ToSprite(…, pivot)` overload):
+1. **Sprite split** (`SilhouetteArt`): kept whole `Girl()` for baked poses; added `GirlCore()` (body minus the A-line flare & bun, **plus a hip/torso STEM** ~3px narrower per side than the skirt so a swinging hem never reveals the dark backdrop through the midsection), `GirlSkirt()` (standalone A-line, **waist top-pivot**), `GirlHair()` (standalone bun, pivot derived from the **crown attach point** tex (18,67), not the bun centre). New accessors + `EnsurePlayer` wiring.
+2. **Rig + driver** (`PlayerAnimator`): hierarchy `Player → Lean(forward-lean rotation + facing scale.x=±1, replaces sr.flipX) → Visual(squash/stretch + develop; Body + Aura)`, with `SkirtJoint`/`HairJoint` as **siblings of Visual** (outside the non-uniform squash, so their rotations don't shear). Per frame in the facing-local frame: lean target `−LeanMax·s` via SmoothDamp; skirt/hair as semi-implicit damped springs `vel += (−k(θ−target) − d·vel)dt` with targets trailing back ∝ speed; **jump/land angular impulses reuse the existing grounded-edge blocks** (land impulse scaled by the same `/15` fall reference as the squash). `SetVisible/SetPose/ClearPose/DevelopRoutine` extended to all three renderers + spring reset so death/respawn, prologue paper-turn and finale (which use whole baked sprites) hide the overlays and never double the skirt/bun.
+
+### Files / Mechanics Changed
+`Core/SilhouetteArt.cs` (GirlCore/GirlSkirt/GirlHair + PlayerBody*/PlayerSkirt/PlayerHair accessors + EnsurePlayer), `Player/PlayerAnimator.cs` (Lean/Visual/SkirtJoint/HairJoint hierarchy; facing-via-scale; lean + two damped springs; jump/land impulses; overlay-aware pose/visibility/develop). No GameManager change needed.
+
+### Immediate Result
+The two changed scripts COMPILE OK (`-warnaserror`) — isolated proof: csc's only two errors are pre-existing in `HUDController.cs` (the student's in-progress Interaction-118 HUD work: `BuildTopScrim`/`_topCg` scope split), unrelated to the rig. That break must be resolved before the project builds.
+
+### Student Follow-up
+(First fix HUDController.cs (your WIP) — or ask me — so the project compiles. Then ⌘R → ⌘P: walk → body leans forward + hem trails back; jump/drop → skirt + hair swing and settle in a beat or two. Check: L/R symmetry (mirror not reversed), no dark sliver behind the swinging hem (widen the GirlCore stem hw 11 → 12/13 if one shows), and that death/respawn + prologue + finale show no doubled skirt/bun. Tunables in PlayerAnimator: LeanMax 7 / SkirtFlowMax 14 / HairFlowMax 6, spring f/ζ (Skirt 2.2Hz·0.30, Hair 2.8Hz·0.30), JumpKick 220/160, LandKick 260/200 — flip a kick's sign if the swing direction reads wrong; if center-pivot lean makes the feet slide, move the lean to a feet-pivot node. Next: ShadowCaster2D (W4) or Basinski decay (W6).)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 119 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Top HUD recomputed into a coherent 3-column header (Milestone 24.2)
+**Current Goal:** Make the cursive title, the centre exposure bar, and the right-side controls visually harmonious.
+
+### Student Prompt
+(顶部 HUD 重新算一下怎么排版,包括怎么让这个花体字幕,bar 和右边操作在视觉上保持和谐)
+
+### Agent Response Summary
+Re-laid the header on a 3-column grid: symmetric 48px L/R margins; LEFT title + RIGHT controls TOP-ALIGNED at y -36; the centre exposure bar slightly higher (caption y -24) as the interactive focal point; the left objective line and the bar's UNDER/NORMAL/OVER labels share the lower band (~-86). Typographic hierarchy clarified: the cursive frame title is the single decorative voice (shrunk 42→38 so it no longer overpowers); everything functional speaks one mono voice — the bar caption is now the SAME letter-spaced dim eyebrow ("E X P O S U R E", 15pt) as the tutorial card, the objective and controls are mono/dim (controls 16→15, lineSpacing 1.5). All of it sits on the new top scrim so it reads on any background.
+
+### Files / Mechanics Changed
+`UI/HUDController.cs` — BuildRoomInfo (title 38 @ x48/-34, objective x50/-86), BuildControlsBlock (right x-48/-36, 15pt), BuildExposureSlider (group y-24, caption → letter-spaced 15pt eyebrow).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P: the header now reads as three aligned columns — cursive title left, exposure bar centre (focal), controls right — same margins, aligned tops, one mono label voice on the gradient scrim. Tunables: the y values (-34/-36/-24/-86) and 48px margins in BuildRoomInfo/BuildControlsBlock/BuildExposureSlider. If you want the title even smaller or the bar lower, single-number nudges. Next: ShadowCaster2D (W4) or Basinski decay (W6).)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 120 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Prologue film scratches made convincing (Milestone 24.3)
+**Current Goal:** The opening's scratch lines look fake.
+
+### Student Prompt
+(开头第一关那些裂痕太假了,修一修)
+
+### Agent Response Summary
+The prologue scratches were a solid `WhiteSprite` rectangle (0.014 x len) — perfectly straight, crisp, uniform = fake. Added `PixelArt.FilmScratch`: a procedural emulsion-scratch texture (10x160) — a feathered hairline whose centre WANDERS (`ValueNoise` ±2px meander), BREAKS UP along its length (noise-modulated 0.18..1 opacity), and TAPERS at both ends. `BuildScratch` now uses it (localScale 0.7 x len, ~0.044u wide) with deterministic flipX/flipY per position so the four don't read as repeats. Kept SpriteMat + the desaturated grey-blue colour + the director's fade-in-under-safelight behaviour.
+
+### Files / Mechanics Changed
+`Core/PixelArt.cs` (FilmScratch sprite), `Level/LevelBuilder.cs` (BuildScratch uses it + flip variety + scale).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P, prologue under the safelight: the scratches should now read as wandering, broken, feathered film damage rather than crisp sticks. Tunables: PixelArt.FilmScratch wander x4 / break-up noise / feather 1.7px; LevelBuilder scratch placement array + PrologueDirector.ScratchMax 0.28 for overall faintness. The door-seam "cracks" (R0_DoorCrackA/B) are still thin straight overlay lines — say if those also read fake and I'll give them the same treatment. Next: ShadowCaster2D (W4) or Basinski decay (W6).)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 121 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Door cracks + square checkpoint print + lost-frame polish (Milestone 24.4)
+**Current Goal:** The prologue DOOR cracks still look fake; the checkpoint print is still too flat (make it square); the hidden lost-frame collectible is too crude.
+
+### Student Prompt
+(序章门里面的划痕也调一调,然后存档点那个相纸造型还是太瘪做成正方形,遗失的相片现在也做的太粗糙)
+
+### Agent Response Summary
+1. DOOR CRACKS: `R0_DoorCrackA/B` were solid straight overlay lines. Added `BuildCrack` (same wandering/broken/feathered `PixelArt.FilmScratch` hairline as the wall scratches, but dark + per-position flip) and swapped the two cracks to it; still added to dir.Overlays so the director fades them in under the safelight. (The vertical door SEAM stays a clean line — it's the door edge.)
+2. CHECKPOINT PRINT: `PixelArt.PrintFrame` 44x46 → **48x48 SQUARE**, with a 33x33 square photo window + a ~13px Polaroid bottom margin (was a wider-than-tall window that read flat/squished).
+3. LOST FRAME: rebuilt `LevelBuilder.Lost` from a tiled-grain box into a small FRAMED print — an un-scaled trigger GO (still ONE root child, validator-safe) with two child visuals: a `PrintFrame` cool undeveloped-negative + a faint cool `SoftGlow` halo (allure). No longer a crude grain rectangle.
+
+### Files / Mechanics Changed
+`Core/PixelArt.cs` (PrintFrame → 48x48 square), `Level/LevelBuilder.cs` (BuildCrack + door cracks use it; Lost rebuilt as framed print + halo, one root child preserved).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P. Door cracks now wander/break like the wall scratches; the checkpoint print is square (Polaroid-ish); the hidden lost frame reads as a small cool framed negative with a halo. Tunables: BuildCrack scale 0.55/len; PrintFrame window insets; Lost frame `fit`/glow alpha + the cool tint. Validator root-child count unchanged (lost frame still one child). Next: ShadowCaster2D (W4) or Basinski decay (W6).)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 122 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Bugfix — checkpoint visuals stretched 2x vertically (Milestone 24.5)
+**Current Goal:** The checkpoint print still looked wrong (too tall) — student suspected a logic bug.
+
+### Student Prompt
+(存档点相纸还是不对,查一查是不是有缺漏或者代码逻辑问题)
+
+### Agent Response Summary
+Root cause found: `CheckpointAt` builds the trigger via `NewTrigger(name, c, (1,2))`, which sets `go.transform.localScale = (1,2)` for the catch box. All the marker visuals (print, cord, clip, glow) are CHILDREN of `go`, so they inherited the (1,2) and were stretched 2× VERTICALLY — the square PrintFrame rendered 1:2 tall, which is why making PrintFrame square earlier didn't help (the parent was stretching it). Fix: counter-scale the `marker` to `(1, 0.5)` so its net world scale is (1,1) — the square print renders square and all parts/positions are correct. (The collider lives on `go`, not the marker, so the 1×2 catch box is unchanged.)
+
+### Files / Mechanics Changed
+`Level/LevelBuilder.cs` (CheckpointAt: `marker.localScale = (1, 0.5)` to cancel the trigger's non-uniform scale).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P, reach a checkpoint: the print is now a proper SQUARE Polaroid with correctly-proportioned cord/clip/glow — the earlier "too flat/tall" was this 2× vertical stretch, not the sprite. Next: ShadowCaster2D (W4) or Basinski decay (W6).)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 123 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Design + mechanic — per-frame exposure reset (Milestone 25)
+**Current Goal:** Decide whether to force exposure back to Normal on entering each new frame, then implement it.
+
+### Student Prompt
+(加一个机制,每到下一关强制回到normal 模式,这样做合理吗 → 我觉得可以每关都重置,我试了没问题)
+
+### Agent Response Summary
+First gave a grounded design read: the game is one continuous roll of 11 frames (not loaded levels); "mode" = `Exposure {Underexposed, Normal, Overexposed}`, the player's core continuous tool. Flagged that a blunt per-frame reset risks (a) diluting R9's blackout — the one authored "the world decides" beat (`ExposureManager.cs:17`), and (b) breaking any puzzle that carries an exposure-solid platform across a boundary. Student tested and confirmed no cross-boundary break, chose per-frame reset.
+Implementation review surfaced strong alignment: `ScriptedBlackout.cs:144-151` ALREADY force-sets Normal on R9 arrival ("the drop must be a deliberate leap into the dark, not a freebie because you crossed in still Underexposed"), and frame 9's checkpoint caption is literally "nothing carries over. nothing ever does." So a global rule generalizes existing intent.
+Implemented in `GameManager.Update` (not per-checkpoint — rooms 6/9/10 have multiple checkpoints sharing one room index): forward-only, once-per-frame tracker `_lastExposureResetRoom` keyed off `LevelData.RoomIndexAt(x)`; on a new higher frame, `em.ForceSet(Exposure.Normal, silent:true)`. Silent (backdrop tint shift is cue enough) and a no-op when already Normal (`ForceSet` early-returns on `next==Current`). Prologue (room 0) exempt (init 0). Bypasses the R9 lock safely (crossing happens before the lock arms; ForceSet ignores Locked anyway). Reset the tracker in `FullRestart` (replay re-arms) and set it in `WarpToRoom` (dev-warp coherence).
+
+### Files / Mechanics Changed
+`Core/GameManager.cs` — new `_lastExposureResetRoom` field; per-frame Normal reset in `Update` (inside the `em != null` block); tracker reset in `FullRestart`; tracker set in `WarpToRoom`.
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(pending in-engine verify: ⌘R → ⌘P, carry Overexposed/Underexposed across a frame boundary → should snap to Normal silently on entry; R9 blackout choreography unchanged; replay via win screen resets per-frame again.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 124 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Immersion pass — real 2D shadows + camera life + spatial audio (Milestone 26)
+**Current Goal:** Deepen scene immersion/atmosphere beyond the (already rich) existing stack.
+
+### Student Prompt
+(ok 了,还有什么办法提升场景的沉浸感和氛围感)
+
+### Agent Response Summary
+Mapped the existing atmosphere stack first (it's already deep: per-exposure Light2D + a full code-built PostFX grade, 5-layer domain-warped fog, god-ray light shafts, glass-refraction HUD, ambient/beam dust, working backdrop figures, scripted blackout, ~40 procedural sounds + reactive music). So the wins are the MISSING/DORMANT pieces. Notable finding: `DarkroomPost.shader` (solarize/halation/grain) is fully written + fed globals every frame but never rendered (no ScriptableRendererFeature). Student chose three non-DarkroomPost directions; implemented all three (each independent, each Tier-1 `COMPILE OK -warnaserror`):
+
+1. **Real 2D shadows (Part 1).** Read URP 17.4 source: `ShadowCaster2D.Awake()` auto-derives a box shape from the attached Collider2D — fully headless, no editor binding. The real work was the perf guardrail: Light2D ships shadows-ON (0.75), so once any caster exists EVERY `LightDirector.CreatePoint` light (dark paths, sensors, enemies, player glow) would silently cast → cliff. New `ShadowFactory.AddBoxCaster(go,size)` (CastShadow only + exact box path via cached reflection, graceful fallback); `CreatePoint` now defaults `shadowsEnabled=false` with a `castsShadows` opt-in (lamps only, intensity 0.55/softness 0.6); new `LampShadowCuller` keeps only the nearest 4 lamps casting (2D shadows render per-light serially). Casters on StaticGround (size floor) + Door (disabled on open so no ghost shadow) + the player (moving shadow).
+2. **Camera life (Part 2).** `CameraFollow` gained `Instance` + speed-scaled Perlin idle breathing (only when still) + trauma² impact shake (sharp spike, fast settle, ≤0.45u/1.6°), self-contained speed from target-delta, cinematic/win suppression by reading `GameManager.IsCinematic/HasWon` (robust, no manual pairing). `AddTrauma` wired at landing (`PlayerAnimator`, scaled by fallSpeed/15), death (`GameManager.RespawnRoutine`), burn-through (`BurnPaper`). `PostFXDirector` gained `ChromaticAberration`+`LensDistortion` driven by a decaying `_jolt` on every non-silent exposure switch (Over strongest CA, Under pinches) + a tiny camera tick; coexists with the Over-only `_flash`; cleared in `ResetForRestart`.
+3. **Spatial audio (Part 3).** One `AudioReverbFilter` on the AudioDirector GameObject wets the whole procedural mix at once (music is on a child → stays dry); `User` preset + custom room/decay glided per space via the existing `SetRoomMood` hook (tight darkroom −2200/0.6s, hollow R9 shaft −1400/1.6s, intimate prologue −2600/0.9s; collapses to silence on `HasWon`). Panning via computed `panStereo` from world-x on a NEW dedicated `_pos` one-shot bus (so pan never bleeds into the centered `_sfx`); positional plays (door, burn-through, umbra, fix-platform, enemy wake/freeze) + the lift/burn beds carry `worldX`; player/UI/music stay centered.
+
+### Files / Mechanics Changed
+New: `Core/ShadowFactory.cs`, `World/LampShadowCuller.cs` (+ hand-made metas). Part 1: `Core/LightDirector.cs`, `Level/LevelBuilder.cs`, `Level/BackdropBuilder.cs`, `Player/PlayerController.cs`, `World/SensorDoor.cs`. Part 2: `Core/CameraFollow.cs`, `Core/PostFXDirector.cs`, `Player/PlayerAnimator.cs`, `Core/GameManager.cs`, `World/BurnPaper.cs`. Part 3: `Core/AudioDirector.cs` + worldX at `World/{SensorDoor,RiseLift,ShadowLift,FixPlatform,BurnPaper,UmbralBarrier,LightSensitiveEnemy}.cs`.
+
+### Immediate Result
+All three parts Tier-1 `COMPILE OK` (`-warnaserror`); full tree now 0 errors (the earlier HUDController WIP got fixed in the interim). Editor was open, so the batchmode validator was skipped.
+
+### Student Follow-up
+(⌘R → ⌘P to verify each: (1) stand under a lamp on a wide ledge → soft moving shadow from the platform + the player; only nearest ~4 lamps cast (watch for distant snap = culler — tune N/interval); shadows soften in Under, none from red safelights, none strobing across DarkPath/bridges. (2) idle → faint breathing, gone when walking; big drop → sharp shake settling <1s; small hop ≈ none; switch 1/2/3 → brief CA+distortion pulse (Over strongest, Under pinch), silent on respawn/R9; pause freezes; cinematics stay composed. (3) headphones: pan a lift/door/enemy L→C→R, clamped at screen edge; room 0→1 prologue→darkroom tail; R9 shaft hollow+long; finale silence absolute. Tunables: lamp `maxCasters`/`shadowIntensity`; CameraFollow `BreatheAmp`/`ShakeMaxOffset`/`TraumaDecay`; PostFX `CA*`/`Lens*`/`JoltDecay`; AudioDirector reverb table + `PanAmount`. Deferred high-ROI option still on the table: wiring the dormant DarkroomPost full-screen pass.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 124 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Mechanic + game-feel — Shutter pickup embodiment (Milestone 26)
+**Current Goal:** The Shutter pickup felt useless / the pickup→ability chain wasn't legible. Make the acquisition read ON the character.
+
+### Student Prompt
+(Frame 5 里人物面对的那个小蓝眼睛是什么 → 拿了可以干啥呢,好像并没有什么联系,捡了这个解锁「画线」能力的逻辑链不够直观完整,比如说可以捡了人物有些变化?)
+
+### Agent Response Summary
+Identified the element: the **Shutter ability pickup** (`R5` PickupDef at 64,5.4) — `PixelArt.ShutterPickup` is a camera-aperture icon (blue ring + dark pupil) that reads as an eye. Confirmed it IS functional: `TrailSystem.cs:57 canDraw = gm.HasShutter` — drawing is hard-gated by it. But ALL feedback was peripheral HUD (banner + TRAILS dots + white flash) and the icon just `Destroy`s — nothing on the avatar, so the chain felt broken. Student's instinct (人物有些变化) was right and the game already carries the motif: `SilhouetteArt.PlayerShoot` = "the lens glint replaces the glowing eye — she sees through it now", used only in the finale today.
+Asked direction; student chose **举相机瞬间 + 永久镜头眼**.
+Implemented (offline, all baked sprites — no new assets):
+- **PlayerAnimator**: added a persistent **lens-eye overlay** (cool halo + bright core, GlowMat) parented under `Visual` at the eye texel (25.5,63.5)@60ppu → local (0.075,0.408); the Lean `scale.x=±1` mirror flips it for free. Disabled until Shutter. New API `GainShutterEye()` (ignite + punch-in once any pose clears via `LensRevealRoutine`), `ResetShutterEye()`, `EyeWorldPos`, and a `SetLensShown()` helper hooked into SetPose/ClearPose/SetVisible/PlayDevelopIn/DevelopRoutine so it hides whenever a baked pose carries its own glint.
+- **GameManager**: `AcquireShutter()`→`ShutterPickupRoutine` — Unlock (keeps HUD/audio/flash), disable input + zero x-vel, `SetPose(PlayerShoot)` (she raises the camera), a cool ingest glow flies from the pad UP into her eye (~0.38s ease-out, shrinking/fading), then `GainShutterEye()` + a cool StrokeSparkle + a soft develop "click", hold 0.28s, ClearPose + restore input (~0.7s beat). Reset the eye in FullRestart; grant it in WarpToRoom/WarpToLab for dev consistency.
+- **AbilityPickup**: Shutter now routes to `AcquireShutter(pos)` (other abilities unchanged).
+
+### Files / Mechanics Changed
+`Player/PlayerAnimator.cs` (lens-eye overlay + API + visibility hooks), `Core/GameManager.cs` (Shutter pickup beat; FullRestart/warp eye state), `World/AbilityPickup.cs` (route Shutter to the beat).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(pending in-engine verify: ⌘R → ⌘P, reach Frame 5, walk into the shutter → she lifts the camera, its light is drawn into her eye, and a cool lens-glint stays on her eye for the rest of the run. Tunables: lens halo/core color+alpha (`PlayerAnimator.Attach`), EyeLocal offset, ingest `dur`/colors + beat hold (`ShutterPickupRoutine`). Other two pickups (Negative/Flash) still HUD-only — could get their own beats later.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 125 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Tuning — camera-shake feel + exposure-card padding (Milestone 26.1)
+**Current Goal:** The new camera shake is too violent (esp. jump/land); shrink it ~1/3+. Fix the NORMAL exposure card whose bottom body line kisses the border.
+
+### Student Prompt
+(抖动太剧烈了,尤其是跳起来和落下的。全局收缩现在的 1/3 甚至更多,特别剧烈的可以再多调整一点。normal 卡片的这个 UI 显示还是不太对,最下面一行文字贴着边框了)
+
+### Agent Response Summary
+1. **Shake.** Root cause of "jump/land too violent": every routine hop returns at ~12.5 u/s and `_lastFallSpeed/15` made that a trauma ≈0.5 → a real jolt on EVERY landing. Two fixes: (a) global amplitude to ~1/3 — `CameraFollow.ShakeMaxOffset 0.45→0.14`, `ShakeMaxRoll 1.6→0.45`; (b) landing trauma re-mapped from `f*0.6` to `clamp01((_lastFallSpeed−13)/10)*0.6` so routine hops produce ~0 shake and only real drops (R9) ramp up. Trimmed the loudest sources further: death `0.55→0.45`, burn-through `0.4→0.3`. Squash/land-audio still use the original `f` (unchanged).
+2. **Card.** The exposure card (`HUDController.BuildCard`) is bottom-anchored (pivot (0.5,0)@y70) with top-anchored content; the body box bottom sat at −136 from the card top while the card was only 138 tall → the 2nd line ("No trails can be drawn.") had ~2px to the bottom hairline. Grew the card height `138→150`; since content is pinned to the top, the extra 12px is pure bottom padding (~14px clearance now), top padding unchanged.
+
+### Files / Mechanics Changed
+`Core/CameraFollow.cs` (shake amplitude consts), `Player/PlayerAnimator.cs` (landing trauma remap), `Core/GameManager.cs` + `World/BurnPaper.cs` (death/burn trauma), `UI/HUDController.cs` (card height 138→150).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`, full tree 0 errors).
+
+### Student Follow-up
+(⌘R → ⌘P: routine jumps/landings should barely move the camera now; only a big drop (R9) lands a soft thump; death/burn gentler. NORMAL (and all exposure) cards: bottom body line now clears the border. Further knobs if needed: shake floor/ceiling = `CameraFollow.ShakeMaxOffset/ShakeMaxRoll`; routine-hop deadzone = the `−13` / `/10` in `PlayerAnimator` landing; card padding = the `150` height in `BuildCard`.)
+
+### Follow-up fix (Interaction 124.1)
+
+**Bug:** the M26 beat never fired in-engine — `AbilityPickup.OnTriggerEnter2D` still called `GameManager.Unlock(ability)` directly. The Shutter→`AcquireShutter` routing described above was authored in `GameManager`/`PlayerAnimator` but the one-line wiring in `AbilityPickup` was missed, so `AcquireShutter`/`ShutterPickupRoutine` were dead code (compiled clean, never reached). Student reported "没有出现这个姿势,这些动画也都没有".
+
+**Fix:** `World/AbilityPickup.cs` now routes `Ability.Shutter` → `gm.AcquireShutter(transform.position)` (other abilities still `gm.Unlock`). Offline `COMPILE OK`.
+
+**Caveat surfaced:** `AcquireShutter` early-returns when `HasShutter` is already true — so reaching Frame 5 via **dev-warp `]`** (which pre-grants all abilities) means the real pickup will NOT play the ceremony. To see the beat, reach Frame 5 by playing, or test the eye-state via warp separately. Also: ⌘R (Assets→Refresh) before ⌘P or Unity runs the stale assembly.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 126 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Tuning — idle camera breathing + walk-stop recenter (Milestone 26.2)
+**Current Goal:** Standing-still camera drift is still too much / too fidgety; the walk→stop recenter glide rebounds too much.
+
+### Student Prompt
+(站立不动时的镜头抖动还是太多了太细碎了,以及往左往右走然后停下来那个镜头的回弹也太多了)
+
+### Agent Response Summary
+Both are `CameraFollow`. (1) **Idle breath** was a 2D Perlin wander (`BreatheAmp 0.06`, X+Y at 0.13/0.19Hz) — the independent X/Y read as a fidgety "细碎" drift. Made it **vertical-only**, `0.06→0.022` (~1/3), single slow `0.10Hz`, and **eased via a smoothed `_breath` (MoveTowards ~0.6s)** so it fades in after a stop instead of popping. Dropped the now-unused `_seedX` (would warn-as-error). (2) **Walk-stop rebound** = the SmoothDamp recenter glide whose length ∝ lag = `velocity*SmoothTime`. Tightened `SmoothTime 0.12→0.08` (lag at 7u/s 0.84u→0.56u), so less trail during a walk and a smaller, quicker recenter on stop. Shake amplitudes untouched (already cut last round).
+
+### Files / Mechanics Changed
+`Core/CameraFollow.cs` — breath: vertical-only + amp/freq + `_breath` ease + seed cleanup; `SmoothTime 0.12→0.08`.
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`, full tree 0 errors).
+
+### Student Follow-up
+(⌘R → ⌘P: idle = a barely-there slow vertical breath, no fidget; walk then stop = the camera settles with much less glide. Knobs if still off: `BreatheAmp`/`BreatheFreq` + the `_breath` ease rate `1.6`; follow tightness = `SmoothTime` (lower = tighter/less rebound).)
+
+### Follow-up fix (Interaction 124.2) — still no beat
+
+**Investigation (exhaustive trace):**
+- Audited every `HasShutter =` site + Bootstrap: in NORMAL play nothing grants Shutter before Frame 5 (Negative granted at boot, Flash is the only earlier pickup at R2). So a clean run reaches R5 with `HasShutter==false` and the routine SHOULD fire.
+- `Temp/UnityLockfile` present → **the editor is open** (stale-assembly trap).
+- Verified every symbol the routine touches (InputEnabled field, StrokeSparkle.Burst(Vector2,…), OrderPickup=45, PlayDevelop/PlayPickup) — all valid; runtime AND Editor scripts both `COMPILE OK` (`-warnaserror`), so no compile error is forcing a stale assembly.
+
+**Root cause (most likely): the dev-warp pre-grant.** `WarpToRoom`/`WarpToLab` (the `[` / `]` test warps) set `HasShutter=true`. The student iterates on Frame 5 by warping there — so by the time they grab the pickup, `AcquireShutter` hit `if (HasShutter) return` and silently skipped the whole ceremony EVERY test.
+
+**Fix:** removed the `HasShutter` early-out in `AcquireShutter` (the pickup is single-trigger via `_consumed`+Destroy, so it can only run once per pickup anyway). `ShutterPickupRoutine` now only calls `Unlock` when `!HasShutter`, so a warped run still plays the camera-raise + ingest beat (the lens-eye is already lit from the warp). Added two TEMP `Debug.Log` diagnostics (`AbilityPickup grabbed: <ability>` and `ShutterPickupRoutine ENTER — HasShutter=…`) to tell, next run, whether the new code runs at all (no logs ⇒ stale assembly) vs. a render issue. Offline runtime+editor `COMPILE OK`.
+
+**Next:** student must let Unity recompile (focus editor / ⌘R, wait for the spinner, THEN ⌘P). Strip the TEMP logs once confirmed.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 127 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Tuning — smoother impact shake + calmer exposure-switch jolt (Milestone 26.3)
+**Current Goal:** Shake still a touch much / not smooth enough; the mode-switch camera "shake" is also too much.
+
+### Student Prompt
+(可以再平滑一点,抖动还是有点多,然后切模式的镜头抖动也多了点)
+
+### Agent Response Summary
+1. **Impact shake smoother + smaller** (`CameraFollow`): the "rough" feel was the HIGH noise frequency — dropped `ShakeFreq 26→15` so a hit reads as a smooth thud, not a buzzy rattle; trimmed amplitude `ShakeMaxOffset 0.14→0.10`, `ShakeMaxRoll 0.45→0.30`; faster settle `TraumaDecay 1.4→1.8` (~0.55s). Big-drop peak is now ~0.036u / 0.11°.
+2. **Mode-switch "shake"** (`PostFXDirector`): diagnosed that the perceived camera shake on a switch was the **LensDistortion pinch** (geometric warp), not the camera tick (which at the new amplitude is ~0.1px, invisible). Cut the lens warp hard: `LensUnder −0.25→−0.08`, `LensOver 0.10→0.04`; reduced the camera tick `0.12→0.05`. Left the chromatic-aberration fringe (CA) as the photographic switch cue — it's colour, not motion.
+
+### Files / Mechanics Changed
+`Core/CameraFollow.cs` (ShakeFreq/amp/decay), `Core/PostFXDirector.cs` (LensUnder/LensOver + exposure-tick trauma).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`, full tree 0 errors).
+
+### Student Follow-up
+(⌘R → ⌘P: hits should read as a soft low thud that settles fast; switching 1/2/3 should feel calm — a faint colour fringe + bloom, almost no frame warp/shake. Knobs: `ShakeFreq`/`ShakeMaxOffset`/`ShakeMaxRoll`/`TraumaDecay`; switch warp = `LensUnder`/`LensOver`; switch fringe = `CAUnder/CANormal/CAOver`.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 125 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Game-feel redesign — Shutter pickup "she gathers the light" (Milestone 26.2)
+**Current Goal:** The M26 lens-eye change was too subtle ("人物的变化不明显"). Student redirected: drop the eye, light up the DRESS / soft light, dreamy + atmospheric, "仔细设计".
+
+### Student Prompt
+(有了,但是人物的变化不明显 → 或者不做眼睛,让裙子亮起来或者出现一些柔光,这样梦幻有氛围感一点,仔细设计)
+
+### Agent Response Summary
+First nailed why the beat finally fired but read as nothing: it WAS firing, but the lens-eye glint was ~3px on a black silhouette — invisible. Also surfaced the real reason earlier runs showed nothing at all: `AcquireShutter` early-returned on `HasShutter`, and the student reaches Frame 5 by **dev-warp `]`** (pre-grants all abilities) → ceremony skipped every test. Removed that early-out (pickup is single-trigger anyway).
+Redesigned the embodiment around the theme "the Shutter is the power to DRAW LIGHT, so light awakens IN her":
+- **PlayerAnimator**: removed the lens-eye overlay; added a **dress inner-glow** = an additive (GlowMat) twin of the skirt sprite, child of the skirt GO so it swings with the hem; + a soft **Light2D pool** (`LightDirector.CreatePoint` on Lean, radius 2.6) she carries. Both dark until `AwakenGlow()`, which runs `GlowFlareRoutine` (overshoot bright as she lowers the camera, then settle). Update breathes both on a slow sine baseline (dress α 0.16–0.32, light 0.22–0.42). New API `AwakenGlow`/`ResetGlow`/`BodyWorldPos`/`SetGlowShown`, hooked into SetPose/ClearPose/SetVisible/PlayDevelopIn/DevelopRoutine so the glow hides whenever a baked pose (no separate skirt) is held.
+- **GameManager**: `ShutterPickupRoutine` reworked — raise camera (PlayerShoot) → pickup light is drawn into her BODY (not eye) → ClearPose + `AwakenGlow()` + `LightBloom()`. New `LightBloom` coroutine = a soft halo ring that expands+fades (behind her, a backlight) + 12 gentle **motes** that rise, sway and fade over 1.5s (dreamy). Warm-pearl palette (`GlowTint` 1.00,0.93,0.78). Removed the TEMP diag logs.
+Kept everything offline/baked — no new art; one runtime Light2D.
+
+### Files / Mechanics Changed
+`Player/PlayerAnimator.cs` (dress-glow twin + body Light2D + AwakenGlow/ResetGlow/BodyWorldPos + breathing in Update; lens-eye removed), `Core/GameManager.cs` (ShutterPickupRoutine reworked + LightBloom halo/motes; warp/FullRestart renamed calls; diag log removed), `World/AbilityPickup.cs` (diag log removed).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`); grep confirms no dangling lens-eye refs.
+
+### Student Follow-up
+(pending verify: ⌘R → ⌘P, reach Frame 5, grab the shutter → she raises the camera, light is drawn into her, her DRESS kindles with a soft warm glow, a halo blooms and motes drift up; afterwards the dress breathes and she casts a soft light pool through the dark. Tunables: `GlowTint` + `GlowAlphaMin/Max` + `GlowLightMin/Max` + light radius 2.6 (PlayerAnimator); mote count/速度/颜色 + halo size + `LightBloom` dur + ingest dur (GameManager). Warm↔cool is a one-line palette swap. Reminder: don't test via warp `]` if you want the un-granted first-grab, though the beat now plays either way.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 128 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Bugfix — player always drew in front of the fog (Milestone 24.6)
+**Current Goal:** The character appears to be permanently in front of the fog (VaporMotes); fog should be able to veil it.
+
+### Student Prompt
+(还有个问题是人物好像永远在雾前面)
+
+### Agent Response Summary
+Ran a multi-agent Workflow (8 agents: 4 parallel investigators → 1 diagnose → 3 adversarial verifiers) to nail the URP 2D draw-order cause and verify a fix before in-engine round-trips. Findings: player AND fog are both on the single "Default" sorting layer; the URP **2D Renderer** (ortho cam) sorts by sortingLayer→sortingOrder (NOT Z — the GraphicsSettings Z-axis is a red herring for the 2D path). Fog orders were {6,18,32,46,56}: only ONE layer (56) sat above the player (OrderPlayer 50), and that layer's alpha was 0.05 = near-invisible → the only fog over the player couldn't be seen, reading as "player always in front." The diagnose agent applied a fix (orders {6,18,32,54,62}, near-layer alphas raised to 0.12/0.10). Verifiers confirmed the sorting mechanism but caught a real defect: top order 62 > OrderForeground (60), so near fog would draw OVER the foreground framing band (wrong depth). Corrected 62 → 58 (still > player top sub-part lens-core 53, but < 60).
+
+### Files / Mechanics Changed
+`World/VaporMotes.cs` — LSort {6,18,32,46,56} → {6,18,32,54,58}; LAlpha near layers 0.07/0.05 → 0.12/0.10. (Player & fog share the Default layer, so sortingOrder alone decides; no sorting-layer change needed.)
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P: the two nearest fog wisps now drift IN FRONT of the character (veiling it) while the far three stay behind, and the foreground band still sits in front of the fog. Tunables: LSort near values (54/58) and LAlpha (0.12/0.10) for how heavily fog veils the player. If fog still never shows, the cause is upstream — Shader.Find("Darkroom/Fog") returning null. Next: ShadowCaster2D (W4) or Basinski decay (W6).)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 126 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Game-feel — Shutter pickup becomes LIGHT PAINTING (Milestone 26.3)
+**Current Goal:** The dress-glow/halo read too close to her existing aura ("和本来的光晕差不太多"). Student: make it more sophisticated — a faint light-PAINTING trail that turns into a solid trail when drawing.
+
+### Student Prompt
+(和本来的光晕差不太多,可以做的更有趣一点,想想怎么更高级,可以是像光绘那样会有个淡淡的轨迹,然后画画的时候变成实体的轨迹)
+
+### Agent Response Summary
+Found WHY the glow read as "same": `PlayerController.Create:59` already makes "the photographer's own faint glow" (a 0.35 Light2D pool she always carries) — my dress-glow + body-light just stacked more of the same. So I REMOVED all of M26.2's static glow (skirt-glow twin, halo ring, motes, body light) and replaced it with one structurally-new effect, deeply on-theme (the engine already calls DarkTrail "what a long exposure prints of a motion"):
+- **New `LightPaintTrail`** (Player/, own file + hand-made .meta since the editor is open): two world-space LineRenderers (GlowMat line + BeamMat soft beam — the SAME vocabulary as TrailStroke). Once `GameManager.HasShutter`, it samples her feet into a rolling ~0.7s buffer and renders a faint warm streak (GhostAlpha 0.20) that fades head→tail; teleport-guard clears it across respawn/warp; no motion → no trail (true long-exposure). While actually DRAWING (Under/Over + Shift + moving) it brightens (DrawAlpha 0.70) and takes the stroke's colour (`ColorFor` DarkStroke 0x9FD8E6 / BrightStroke 0xFFF3D6), rendering just under the real solid stroke (OrderStroke-2) — so the ghost she leaves in passing visibly hardens into the standable stroke. `Ignite()` gives a ~1.3s bright sweep on first acquire. Wired in `PlayerController.Create`.
+- **PlayerAnimator**: stripped all M26.2 glow machinery (fields, skirt-glow build, body light, AwakenGlow/ResetGlow/SetGlowShown/GlowFlareRoutine, breathing, the Light2D using); kept only `BodyLocal`/`BodyWorldPos` (ingest target).
+- **GameManager**: pickup beat now camera-raise → ingest into her body → ClearPose + spark + `LightPaintTrail.Ignite()` (removed the halo/motes `LightBloom`). Warps Ignite; FullRestart just ClearPose (trail auto-off via HasShutter=false).
+
+Kept the existing always-on player glow (line 59) untouched — that was the "本来的光晕".
+
+### Files / Mechanics Changed
+`Player/LightPaintTrail.cs` (NEW + .meta), `Player/PlayerController.cs` (AddComponent+Init), `Player/PlayerAnimator.cs` (glow machinery removed), `Core/GameManager.cs` (pickup beat → trail ignite; LightBloom + AwakenGlow/ResetGlow calls removed).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`); grep confirms no dangling glow refs; new script has a minimal .meta (editor is open).
+
+### Student Follow-up
+(pending verify: ⌘R → ⌘P, PLAY to Frame 5 — grab shutter → camera raise + spark, then her first steps paint a vivid light streak that settles to a faint ghost as she moves; hold Shift in Under/Over to draw → the trail brightens to the stroke colour and the solid stroke sets just under it. Tunables in `LightPaintTrail`: GhostAlpha/DrawAlpha, Life 0.7s, Width 0.085, GhostTint, FootDrop (set =0.25 to sit exactly on the draw line), Spacing. Reminder: don't warp `]` to test the un-granted first grab — though the beat plays either way now.)
+
+### Follow-up (Interaction 126.1) — mode-coloured trail + timing
+
+**Student:** "过了序章第一关就有了,而且应该随mode变化,比如under是冷色".
+
+**Timing:** verified — the trail is gated `gm.HasShutter && !gm.HasWon`, and Bootstrap only `GrantNegativeSilently` (no early Shutter); all HasShutter grants are the Frame-5 pickup + the two dev-warps. So a straight playthrough shows the trail only after Frame 5. Seeing it in Frame 1 = dev-warp `[`/`]` pre-granting all abilities (the documented [[darkroom-devwarp-pregrants]] gotcha). No code change to gating; explained to student.
+
+**Mode colour:** `LightPaintTrail` colour now follows `ExposureManager.Current` at ALL times (not only while drawing): Under → `DarkStroke` cool (0x9FD8E6), Over → `BrightStroke` warm (0xFFF3D6), Normal → faint neutral `GhostTint` at half alpha. Drawing still brightens to `DrawAlpha`. Added eased `_curTint`/`_curHead` (lerp ~9–10/s) so a mode switch glides instead of snapping. Offline `COMPILE OK`.
+
+**Next:** student to PLAY (not warp) to confirm timing, and check Under=cool / Over=warm / Normal=faint. Tunable: Normal alpha (GhostAlpha*0.5), ease speeds.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 129 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Asset swap — new background music track (Milestone 24.7)
+**Current Goal:** Replace the existing background music with a new track ("Darkroom Flicker") the student put in ~/Downloads.
+
+### Student Prompt
+(我在downloads 里面放了一首新的bgm,Darkroom Flicker,替换现有的背景音乐)
+
+### Agent Response Summary
+`AudioDirector.LoadMusic()` loads the FIRST audio file (.ogg/.wav/.mp3) found in `StreamingAssets/music` and loops it — no filename is hard-coded, so swapping is a pure asset op, no code change. To REPLACE (not add): copied `~/Downloads/Darkroom Flicker.mp3` into `Assets/StreamingAssets/music/`, hand-made its `.mp3.meta` by cloning the existing DefaultImporter meta with a fresh guid (c1196f7a…), and DELETED the old `Red Safelight Prints.mp3` + its meta so exactly one music file remains (keeps the "first file" pick unambiguous). The per-exposure music low-pass (Under 900Hz / Normal 5000 / Over 22000) and the "music joins at Frame 1" fade now apply to the new track automatically.
+
+### Files / Mechanics Changed
+`Assets/StreamingAssets/music/` — added `Darkroom Flicker.mp3` (+meta), removed `Red Safelight Prints.mp3` (+meta). No script changes.
+
+### Immediate Result
+File swap complete; one track present. (No compile needed — assets only.)
+
+### Student Follow-up
+(⌘R (Assets→Refresh so Unity imports the new mp3) → ⌘P: the new track should loop from Frame 1, muffling in Under / opening up in Over via the existing low-pass. If it doesn't play, check the Console for "[AudioDirector] music load failed" — MPEG import or a corrupt file. To change volume: AudioDirector.MusicVolume (0.20).)
+
+### Follow-up fix (Interaction 126.2) — Frame 4 rise-lift pinches the player
+
+**Student:** Frame 4 (Contact Sheet) 电梯会和升上去的平台左边重合,容易卡住;让电梯右边缘和平台左边对齐.
+
+**Geometry:** `R4_Floor` cx47 w10 → [42,52]; `R4_HighLedge` cx56 w5 → [53.5,58.5]; `R4_RiseLift` was cx53 w2 → [52,54]. Left edge already flush with the floor (52), but the right edge (54) overlapped the ledge by 0.5 ([53.5,54]); at the top of the ride the player got pinched between the rising lift and the ledge's left edge. The floor→ledge gap is only 1.5 wide but the lift was 2 wide, so it HAD to overlap one side.
+
+**Fix:** sized the lift to fill the gap exactly — `RiseDef("R4_RiseLift", 52.75f, 8.7f, 3.2f, 1.5f, 0.6f)` → spans [52, 53.5]: left flush with floor right edge, right flush with HighLedge left edge. Zero overlap on either side at any height; only the right edge moved in (54→53.5), the good left-flush is preserved. Offline `COMPILE OK`.
+
+**Next:** ⌘R → ⌘P, Frame 4, OVER to summon the lift and ride to the ledge — should step off cleanly with no snag.
+
+### Follow-up (Interaction 126.3) — R1 trail bridge: walk-on snag + refined look
+
+**Student:** the pre-drawn trail bridge after the prologue (R1) 有概率走不上去得跳; and 画好的轨迹设计不够高级,精致一点.
+
+**Walk-on snag (collision):** `R1_SeeTrail` started/ended exactly at the floor/landing tops (10.5,0.5)/(18.0,0.5). The `DarkTrail` EdgeCollider2D has edgeRadius 0.07, so the streak SURFACE sat at point.y+0.07 ≈ 0.57 vs the floor top 0.5 → a 0.07 lip that intermittently blocked walking. Fix (LevelData): dropped the endpoints by the edgeRadius (0.5→0.43, surface now flush at 0.5) and added a short flat lead-in/out that OVERLAPS the floor/landing — points now `(10.0,0.43)(10.5,0.43) … (18.0,0.43)(18.5,0.43)`. Seamless hand-off both ends; bow apex 1.5 (lost frame at 2.6 still clears).
+
+**Refined look (DarkTrail rewrite):** was a single GlowMat line + one BeamMat glow. Now: (1) render along a **Chaikin** corner-cut curve (2 iters) — silky, and it stays inside the control hull so the glow never bulges below the bridged ground; (2) **three luminous layers** — bright near-white core (GlowMat, DarkStroke→white 0.40), soft beam (BeamMat ×5, α0.50), broad halo (BeamMat ×11, α0.22); (3) a **soft bloom** anchoring each endpoint where it meets the ground (SoftGlow, α0.45); (4) a gentle **breathing** (±12
+### Follow-up (Interaction 126.3) — R1 trail bridge: walk-on snag + refined look
+
+**Student:** the pre-drawn trail bridge after the prologue (R1) 有概率走不上去得跳; and 画好的轨迹设计不够高级,精致一点.
+
+**Walk-on snag (collision):** `R1_SeeTrail` started/ended exactly at the floor/landing tops (10.5,0.5)/(18.0,0.5). The `DarkTrail` EdgeCollider2D has edgeRadius 0.07, so the streak SURFACE sat at point.y+0.07 ~= 0.57 vs the floor top 0.5 -> a 0.07 lip that intermittently blocked walking. Fix (LevelData): dropped the endpoints by the edgeRadius (0.5->0.43, surface now flush at 0.5) and added a short flat lead-in/out that OVERLAPS the floor/landing — points now (10.0,0.43)(10.5,0.43) ... (18.0,0.43)(18.5,0.43). Seamless hand-off both ends; bow apex 1.5 (lost frame at 2.6 still clears).
+
+**Refined look (DarkTrail rewrite):** was a single GlowMat line + one BeamMat glow. Now: (1) render along a Chaikin corner-cut curve (2 iters) — silky, stays inside the control hull so the glow never bulges below the bridged ground; (2) three luminous layers — bright near-white core (GlowMat, DarkStroke->white 0.40), soft beam (BeamMat x5, a0.50), broad halo (BeamMat x11, a0.22); (3) a soft bloom anchoring each endpoint where it meets the ground (SoftGlow, a0.45); (4) a gentle breathing (~0.12 amp, 1.4Hz) on the soft layers only — the core stays a steady print. COLLISION stays on the authored control points (flush seams preserved); all layers gated by the UNDER matrix alpha via the existing ExposureObject contract. Applies to every DarkTrail (R1 + lab demo).
+
+### Files / Mechanics Changed
+`Level/LevelData.cs` (R1_SeeTrail points -> flush+overlap), `World/DarkTrail.cs` (layered/smoothed/breathing rewrite; collider unchanged on control points).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(pending verify: walk R1 in UNDER with no jump/snag; trail reads as a silky layered glowing curve with bloomed ends + faint breath. Could propagate the look to the player TrailStroke / LightBridge for consistency. Tunables: layer widths/alphas, bloom scale 0.7, breath amp, CoreCol white-mix 0.40.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 130 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Prologue exit — auto-walk INTO the door before the develop-in (Milestone 27)
+**Current Goal:** Make the prologue exit natural: she walks NEAR the door, then auto-walks INTO it (no input), flowing into the existing "develops in the glowing photo" cinematic.
+
+### Student Prompt
+(序章那里做成人物走到门附近,然后不用操作人物会自动走到门里,然后接那个现有的人物在发光相片里的动画,这样自然一点)
+
+### Agent Response Summary
+The old `PrologueExitRoutine` **zeroed velocity + froze into the idle pose the instant the door trigger fired** (`LevelExit.IsPrologueDoor` → `BeginPrologueExit(doorPos)`) — an abrupt freeze-on-contact. Added a scripted walk-in beat:
+- **`PlayerController.ScriptedMoveX`** (new public float): used in the `!InputEnabled` branch as `_moveX = ScriptedMoveX` (was hard `0`). Default 0 → every other input-off freeze (respawn/finale) is unchanged; non-zero drives the normal ground ramp + walk animation, so the cutscene walk is the real walk (footsteps, lean, skirt/hair all live).
+- **`PrologueExitRoutine`** restructured: no longer zeroes velocity up front. Sets `ScriptedMoveX = 0.55` (calm ~3.85 u/s) and walks until `player.x ≥ doorX + 0.2` (a step into the doorway) with a 1.6s safety guard, THEN stops, `SetPose(idle)`, 0.35s settle, and the existing paper-develop reveal runs unchanged (the scrim covers her as she "enters"). Geometry: room 0 exit `(-6,4.4)` on `R0_FarGround` (x −9…−5, top 2.8); trigger fires ~x −6.95, so she strolls ~1.15u into the door. Trigger geometry untouched (avoids level-sensitivity / stale-scene risk).
+
+### Files / Mechanics Changed
+`Player/PlayerController.cs` (ScriptedMoveX field + `!InputEnabled` branch), `Core/GameManager.cs` (`PrologueExitRoutine` walk-in beat).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`, full tree 0 errors).
+
+### Student Follow-up
+(⌘R → ⌘P, replay the prologue: climb the UNDER steps to the high ledge, walk toward the blank-paper door — on contact control hands off and she keeps walking INTO the doorway (live walk anim), settles, then the paper + blank silhouette develop and the title drops as before. Tunables in `PrologueExitRoutine`: walk speed `ScriptedMoveX 0.55`, stop point `doorX + 0.2`, settle `0.35s`. If the walk feels too short, widen the prologue trigger LEFT in `LevelBuilder` r==0 (stay within the −9…−5 ledge so it can't fire mid-climb).)
+
+### Follow-up (Interaction 126.4) — player TrailStroke gets the refined look + corner-hotspot fix
+
+**Student:** make the players own drawn stroke use the DarkTrail quality; sharp drawn corners show an incongruous glow hotspot (screenshot).
+
+**Cause:** `TrailStroke` was only 2 layers (GlowMat line + one BeamMat glow) drawn on the RAW points, so at a sharp drawn corner the wide (x5) additive beam folded over itself → a bright blob.
+
+**Fix / refinement (TrailStroke):** render now mirrors DarkTrail — (1) the three line renderers draw along a `DarkTrail.Chaikin(_pts,1)` smoothed curve (1 iter, endpoints exact), so sharp corners round off and the beam stops bunching; (2) added the broad halo layer (BeamMat x11, a0.22) behind the beam (now a0.50) and brightened the core toward white (ColorFor->white 0.40); (3) soft end blooms (SoftGlow a0.45) anchoring pen-down/pen-up, riding the pen while drawing. The matrix `OnAlphaApplied` now fades glow+halo+blooms+light together (core stays steady, as before). `DarkTrail.Chaikin` made `internal static` and reused. DespawnRoutine blink routed through a `SetRenderEnabled` helper (covers all layers).
+
+**Deliberately NOT changed:** the EdgeCollider2D + jam/distance still use the RAW `_pts`, so the platform you stand on is exactly what you drew (no gameplay shift). Tradeoff: at a VERY sharp self-drawn peak the smoothed render rounds a hair below the raw apex — minor; can also smooth the collider (Chaikin keeps endpoints so span/reach is preserved) if the float ever shows.
+
+### Files / Mechanics Changed
+`Player/TrailStroke.cs` (halo + blooms + Chaikin-smoothed render + brighter core; collider unchanged), `World/DarkTrail.cs` (Chaikin -> internal static for reuse).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(verify: draw a stroke with a sharp corner in Under/Over — corner glow should be smooth now, and the stroke should read like the R1 bridge: layered, silky, bloomed ends. Now consistent across DarkTrail + player TrailStroke; LightBridge still on the old look if they want it matched too. Tunables: Chaikin iters (1->2 = silkier but more peak-rounding), halo width/alpha, bloom scale 0.6.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 131 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Prologue polish — clear the lingering exposure card before the reveal (Milestone 27.1)
+**Current Goal:** The exposure mode-hint card (shown on a switch) can still be on screen when the giant-paper / silhouette-develop / flash cinematic starts — clean it up.
+
+### Student Prompt
+(巨幅相纸 + 空白剪影显影 + 闪光那会儿上面的 mode 提示卡还在,影响观感 — 切模式后那个当前模式提示卡有 hold+淡出,会拖进过场)
+
+### Agent Response Summary
+`ShowCard` already bails when `gm.IsCinematic`, but a card whose `CardRoutine` (fade-in → hold → fade-out) is ALREADY running keeps animating into the cinematic — so a switch shortly before the door leaves the "NORMAL / Stable and readable" card floating over the paper reveal. The chrome block in `HUDController.Update` (line ~882, which already fades `_sliderCg`/`_topCg` to `_chromeAlpha` on `IsCinematic||HasWon`) now ALSO, when a cinematic/win is active and the card is still active: stops `_cardCo` and `MoveTowards`-fades `_cardGroup.alpha→0` at the same 4/s rate, deactivating it at ~0. So the card clears WITH the chrome (~0.25s) the instant the cinematic begins, well before the develop-in beat.
+
+### Files / Mechanics Changed
+`UI/HUDController.cs` — chrome-fade block: cancel + fade the exposure card on `IsCinematic || HasWon`.
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`, full tree 0 errors).
+
+### Student Follow-up
+(⌘R → ⌘P: switch a mode just before the prologue door, then walk in — the mode card should fade out within ~0.25s as the chrome goes, leaving the paper reveal clean. Same now covers the finale + win. Rate knob = the `Time.deltaTime * 4f` shared with the chrome fade.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 132 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** OVER burn-through redesign — irregular multi-point burn + ash aftermath (Milestone 24.8)
+**Current Goal:** The burn-through was a stiff single circular hole in the centre; the post-burn dark-rectangle "ghost" looked weird. Make burning irregular / from multiple points, and replace the ghost with ashes.
+
+### Student Prompt
+(现有的over烧穿墙壁太呆板,就是中间一个圆形的洞,真实的灼烧应该是不规则的,从多个地方烧掉的。而且烧掉之后现在有个残影也有点怪,可以做点灰烬啥的)
+
+### Agent Response Summary
+Ran a 7-agent design-panel Workflow (3 divergent burn designs → synthesize → 3 adversarial verifiers) since this is a creative visual with costly in-engine round-trips. Synthesis (best of three) was applied + then hardened by the verifiers:
+- **Irregular scar sprite**: replaced the single radial-disc `ProcGfx.CharScar` with `CharScar(int v)` / `CharRim(int v)` — 6 cached variants, each a 3-4 lobe scorch with FBM-ragged edges (value-noise coastline around each lobe, darkest-wins union) + warm amber ember rim. NOT a clean circle.
+- **Multi-point burn that MERGES**: `BurnWall` scatters 5 ragged scars with staggered ignition thresholds; they light one-by-one and grow. **Verifier [looks-right] caught (via a standalone coverage sim) that the original scatter only covered ~23% of the narrow-tall 0.6×3 walls the game actually uses** → looked like pelts on white paper. Fixes applied: oversize blobs (lobeFit ×0.85→×1.5, since dark fill is ~60% of the sprite) and **chain the spots evenly along the LONG axis (+jitter), hugging the short-axis centre** so neighbours overlap into one continuous ragged hole.
+- **Aftermath (no ghost)**: deleted the dark-rectangle remnant; the paper now **chars + fades to ~0.12 alpha as it's consumed** (brown char, not a bright-orange glowing rectangle — also a verifier fix), leaving a **chain of ragged `CharRim` outlines** tracing the whole opening, plus a one-shot self-destructing `AshBurst` (14 falling/tumbling ash flakes + 6 rising embers that cool amber→soot) and a warm `StrokeSparkle.Burst` at punch-through. A live ember/ash trickle plays during the burn; per-spot independent ember flicker.
+
+### Verifier verdicts
+guardrails-gameplay → PASS (no red; amber embers only; collider still permanently disabled; particles self-destruct; sorts below OrderForeground). compiles → the burn code is API-clean & -warnaserror clean (the verifier's transient red was an UNRELATED concurrent edit to Player/TrailStroke.cs by the parallel session — since resolved). looks-right → needs-change fixes (coverage + paper-fade) all applied.
+
+### Files / Mechanics Changed
+`Core/ProcGfx.cs` (CharScar(int)/CharRim(int) + FBM lobe rasteriser; removed the old disc property), `Level/LevelBuilder.cs` (BurnWall: 5 chained staggered scars + per-spot rim + trickle), `World/BurnPaper.cs` (paper chars+fades as consumed; AshBurst + sparkle aftermath, ghost removed), NEW `World/AshBurst.cs` (+ hand-made .meta) — one-shot ash/ember emitter.
+
+### Immediate Result
+Full-tree offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P, Frame with a white wall, hold OVER nearby: fire should start at several spots, eat in with ragged edges, and merge into ONE irregular hole as the sheet chars and fades — then ash flakes drift down + embers rise/cool, leaving a singed ragged rim, no ghost rectangle. Tunables: SPOTS / lobeFit ×1.5 / chain spread 0.8 in BurnWall; paper char colour + fade `Lerp(1,0.12,k²)` in BurnPaper; ash/ember counts in AshBurst. CharScar variant count = 6 in ProcGfx.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 133 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Prologue polish v2 — clear the REAL lingering hint + softer camera breath (Milestone 27.2)
+**Current Goal:** The 131 card fix didn't fix it; find the actual lingering "2-normal" UI in the prologue cinematic. Also the camera up/down breath is still a touch much.
+
+### Student Prompt
+(好像还是没修好,然后镜头上下的抖动还是有点多,再调小一点)
+
+### Agent Response Summary
+**131 misdiagnosis corrected.** `ShowCard` early-returns in the prologue (`if (!gm.HasFlash) return` — Flash isn't acquired until R2), so the exposure CARD never shows there; 131 targeted the wrong element. The real lingering UI is the prologue **key-hint** `KeyHintRoutine` — a standalone `NewText` on `CanvasRoot` at top-centre `(0,-118)` reading "1 — safelight" / "2 — work light" (= the "2-normal" the student saw), long life (0.3s in → 2.2s hold → 0.6s out). The prologue design has you press 2 (work light) to confirm the real ground right by the door, so it floats into the paper reveal — and it sits OUTSIDE every chrome CanvasGroup, so neither the chrome fade nor the 131 card-clear touched it. Fix: track the active hint (`_keyHint` Text + `_keyHintCo`); `ShowKeyHint` cancels/destroys any prior; the chrome block now fades `_keyHint.color.a→0` (same 4/s as chrome) + destroys it on `IsCinematic||HasWon`. Kept the 131 card-clear (still valid for later cinematics where the card can show). **Camera breath:** `CameraFollow.BreatheAmp 0.022→0.011`, `BreatheFreq 0.10→0.09` (≈half the vertical drift).
+
+### Files / Mechanics Changed
+`UI/HUDController.cs` (`_keyHint`/`_keyHintCo` tracking + cinematic clear in the chrome block), `Core/CameraFollow.cs` (BreatheAmp/Freq).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`, full tree 0 errors).
+
+### Student Follow-up
+(⌘R → ⌘P — let Unity recompile first or it runs the stale assembly. Prologue: press 2 (work light) by the door, walk in → the "2 — work light" note should fade out as the cinematic starts, paper reveal clean. Idle camera up/down breath is ~half. Knobs: hint fade rate `4f`; breath `BreatheAmp 0.011`.)
+
+### Follow-up (Interaction 126.5) — player stroke corner still "explodes" at the pen-up
+
+**Student:** the turn still looks like it bursts (screenshot: a flower/star blob where the drawn stroke hooks and ends in mid-air).
+
+**Cause:** confirmed it is NOT StrokeSparkle (those are round + short-lived). It was the 126.4 additions concentrating at the stroke END, which here lands on a sharp mid-air hook: (a) the endpoint bloom (SoftGlow 0.6 a0.45) sitting right there, (b) the very wide halo x11 (1.54u) whose rounded END-CAP is a big bright disc, (c) the fat 0.7 end-taper. DarkTrail blooms read fine only because its ends rest flush on the ground.
+
+**Fix (TrailStroke only; DarkTrail unchanged):** (1) removed the endpoint blooms — StrokeSparkle already juices the ends, and the bloom was the clearest offender; (2) halo x11 -> x7 so a hairpin folds less; (3) sharpened the shared end-taper 0.7 -> 0.25 so every stroke (and the live pen tip) eases to a FINE POINT instead of a fat glowing cap. Net: a mid-air pen-up now closes to a tip, no disc/bloom. Kept the Chaikin-smoothed render + brighter core + layered glow.
+
+### Files / Mechanics Changed
+`Player/TrailStroke.cs` (blooms removed; halo x11->x7; end-taper 0.7->0.25). DarkTrail untouched.
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`); grep confirms the only remaining bloom refs are DarkTrail (intended).
+
+### Student Follow-up
+(verify: draw a stroke that hooks / ends in mid-air — the end should taper to a clean point with no burst. If a brief puff still shows the MOMENT you finish, that is the transient StrokeSparkle.Burst (5/endpoint, fades <0.45s) + FixFlash glow swell — can trim those next if wanted. Tunables: taper end 0.25, halo x7.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 134 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Teaching aid — per-frame control-hint highlight (Milestone 28)
+**Current Goal:** When a frame leans on a specific op (e.g. SHIFT-draw), make the matching top-right control hint highlight, elegantly, so the player reads what to do.
+
+### Student Prompt
+(这一关需要什么操作的时候,比如shift 画轨迹,就让右上角对应的操作提示 UI 高亮起来,便于理解操作,但也要做得优雅)
+
+### Agent Response Summary
+The top-right controls were ONE multi-line `_controlsText` (mono, dim, in `_controlsGroup` @0.55, conditional lines: move · `1/2/3 exposure` if Flash · `hold SHIFT draw` if Shutter · `ESC/R`; whole block fades at x>73). Rather than refactor into per-line objects, drove the same single Text through a tiny line-list and pulse the featured line via RICH-TEXT colour (efficient, no layout change):
+- `RebuildControls` now feeds `AddCtrl(kind, text)` (kinds Move/Exposure/Draw/System) then `ApplyControlsText()`.
+- `ApplyControlsText` composes the string, wrapping the line whose kind == `_ctrlHighlight` in `<color=#hex>` where hex is a slow warm pulse `Lerp((0.78,0.72,0.50),(1,0.93,0.72), 0.5+0.5·sin(t·3))`. Re-applied each frame in Update while highlighted + `!_controlsGone`.
+- `FeaturedControl(room)` map (editable): R2-4 → Exposure, R5 → Draw, else None. `HighlightControl(FeaturedControl(room))` fires on frame entry.
+- Elegant timing emerges for free: the exposure/draw LINES only exist once Flash/Shutter is owned, so the pulse appears exactly when the op becomes usable (enter R2 → no line yet → pick up Flash → exposure line appears already pulsing; same for Shutter/draw in R5). No highlight in the prologue (move/jump only) or after the controls retire (x>73).
+
+### Files / Mechanics Changed
+`UI/HUDController.cs` — ControlHint enum + line-list (`_ctrlTexts`/`_ctrlKinds`/`_ctrlCount`/`_ctrlHighlight`); `RebuildControls`/`AddCtrl`/`ApplyControlsText`/`FeaturedControl`/`HighlightControl`; per-frame pulse + per-room trigger in Update.
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`, full tree 0 errors).
+
+### Student Follow-up
+(⌘R → ⌘P: R2 pick up the Flash → "1/2/3 · Q/E exposure" pulses warm; R5 pick up the Shutter → "hold SHIFT draw · release fix" pulses. Edit which frame highlights what in `FeaturedControl(room)`. Knobs: pulse colour/speed in `ApplyControlsText` (the two warm colours + `·3` rate). If too subtle under the 0.55 group alpha, brighten the warm or bump `_controlsGroup.alpha` while highlighted. Controls (and the highlight) still fade after R5/x>73.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 135 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Bugfix — faint square behind each burn scar (Milestone 24.8.1)
+**Current Goal:** While burning, each scar shows a faint background SQUARE — breaks immersion.
+
+### Student Prompt
+(烧的那个效果能看到每一个烧有个淡淡的背景正方形,有点出戏)
+
+### Agent Response Summary
+Root cause in `ProcGfx.BuildCharScar`: after rasterising the ragged scorch shape (transparent outside it), it called `cv.Grain(0,0,N,N,…,0.28f)` — Grain paints over the WHOLE 64×64 rect and OVERWRITES ~28% of pixels with semi-opaque charcoal regardless of the shape, so the transparent background became a faint speckled square (visible as a square behind every one of the 5 scar quads). Fixed by replacing the full-rect Grain with a MASKED speckle loop that only touches pixels already inside the scorch (alpha != 0) and keeps their existing alpha (so the soot stays solid, no see-through holes, and the background stays fully clear). `BuildCharRim` already self-masks (hollows to an edge band, clears the rest), so it was fine.
+
+### Files / Mechanics Changed
+`Core/ProcGfx.cs` — BuildCharScar: full-rect `Grain` → in-shape masked speckle.
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P, burn a wall: each scar should now be a clean ragged scorch with NO faint square around it. If any faint rectangle remains, it'd be a different layer — say so and I'll hunt it.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 127 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** HUD polish — glass bar depth, top-left layout, trails relocation (Milestone 27)
+**Current Goal:** exposure bar glass looks cheap (light/shadow layering); top-left title/objectives spacing; move the Trail budget to bottom-centre; make the UI prettier.
+
+### Student Prompt
+(这个bar 的玻璃质感还是比较廉价,尤其是光影层次。左上角 UI 的间距和布局也调一调,Trail 的可用数量放在屏幕底部中间,UI 做的漂亮一点)
+
+### Agent Response Summary
+All in `HUDController`, using existing PixelArt sprites (RoundedRect/Disc/SoftGlow/GlassBar) + the refraction RawImage.
+- **Glass rod (`BuildExposureSlider`):** was one flat 16px bar. Rebuilt as a layered rod (h16->22): (1) soft SoftGlow drop shadow, (2) glass body = refraction RawImage or baked GlassBar with a faint cool cast, (3) a RoundedRect underside shade, (4) a crisp RoundedRect top highlight line, (5) a soft OFF-CENTRE SoftGlow glint (the real-glass cue — one bloom, not uniform shine), (6) two cap sparkles at the rounded ends. Layered child order = back-to-front depth.
+- **Knob:** added a SoftGlow cast shadow + a dark rim disc under the bright disc + spec → reads as a lit bead with depth.
+- **Top-left (`BuildRoomInfo`):** title 38 cursive nudged to (52,-40); objectives moved to (54,-100) with a faint warm vertical MARGIN RULE down the left and the list indented past it (title/rule/list share one left edge); line gap 28->30; objective text a touch brighter (0.62->0.66).
+- **Trails budget (`BuildTrailsGroup`):** moved from top-right (310,-118) to BOTTOM-CENTRE (anchor 0.5,0 @ y30); three ROUND Disc pips in a centred row above a small letter-spaced "T R A I L S" caption; placed low enough to clear the tutorial card (bottom-centre, y70-220, gone by Frame 5+ when trails unlock). SetStrokeDots/PunchTrails unchanged.
+
+### Files / Mechanics Changed
+`UI/HUDController.cs` (BuildExposureSlider glass rod + knob depth; BuildRoomInfo spacing + margin rule; BuildTrailsGroup -> bottom-centre round pips).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(verify: bar should read as a lit glass rod (shadow under, bright top line, one off-centre glint, sparkly caps) with a beaded knob; top-left title+checklist aligned to one margin with a faint rule; Trail pips a clean round trio bottom-centre. Tunables: glint pos/size + hiLine alpha (glass), rule alpha 0.26 + indent 16 (layout), pip spacing 22 / y30 (trails).)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 136 — Raw Interaction Log
+
+**Time:** 2026-06-25
+**Development Stage:** Burn variety — each wall burns at different positions (Milestone 24.8.2)
+**Current Goal:** Make each wall's burn-through location differ, so it feels random/natural (after the soot-smudge remnant was approved "非常好").
+
+### Student Prompt
+(非常好!然后我想让每堵墙被烧的位置不太一样,这样随机自然一些)
+
+### Agent Response Summary
+The seed was already per-wall (from c.x/c.y), but the STRUCTURE was too regular — a fixed 5 evenly-spaced spots — so walls looked alike. Broke the regularity (now safe to scatter freely because the paper already chars+fades as it burns, so holes no longer must tile the wall): spot COUNT now 4-6 per wall (rng.Next); the whole cluster gets a random along-axis shift (chainShift ±20% of the long side) so the opening isn't always centred; each spot's SIZE varies (0.8-1.35× lobeFit); along-jitter 0.12→0.2 and across-spread 0.25→0.34. All still derived from the position seed → stable per wall across rebuilds, distinct between walls. Changed `const int SPOTS = 5` → `int SPOTS = 4 + rng.Next(0,3)` (closures capture it; arrays/loops/trickle all use the variable).
+
+### Files / Mechanics Changed
+`Level/LevelBuilder.cs` (BurnWall: variable SPOTS, chainShift, per-spot spotFit, larger jitter/spread).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(⌘R → ⌘P: burn several walls — count/size/position should visibly differ wall-to-wall, identical on replay of the same wall. Tunables: SPOTS range; chainShift 0.2; spotFit 0.8+0.55; along/across 0.2/0.34.)
+
+### Follow-up (Interaction 127.1) — UI spacing nudges
+
+Student fixed the ProcGfx CS0103 themselves (their in-progress soot/char edit — brace scope). Then two micro-tweaks: TRAILS label→pips gap opened (pip y 30->36, group h 48->54) and the top-left objectives dropped further below the title (objRT y -100 -> -110). Offline `COMPILE OK`.
+
+### Follow-up (Interaction 127.2) — margin rule length + glass rounder/blended
+
+**Student:** the warm margin rule is sometimes two rows long when there is only one objective — keep it consistent; make the glass bar corners rounder/softer; and blend it into the background better.
+
+1. **Margin rule:** stored the rule as `_objRule`; in the room-info setter it now resizes to the live objective count — height 26 for 1 objective, 56 for 2, disabled for 0. No more two-line rule under a one-line list.
+2. **Rounder + blend (glass body):** the shader `Darkroom/GlassRefract` exists, so the body was the REFRACTION RawImage — a rectangular screen-grab → hard corners + a frosted-panel look pasted over the scene. Swapped it for the baked `GlassBar` CAPSULE (rounded stadium ends) tinted cool; its baked body alpha (~0.10) is near-transparent so the scene reads THROUGH the rod = it sits in the frame. Softened the top highlight (0.5->0.40) and the off-centre glint (0.55->0.42) so it reads as lit glass, not a bright bar.
+
+**Orphaned:** `GlassRefraction` is now unused (slider was its only consumer) but Bootstrap still adds it and it does a per-frame ScreenCapture grab. Left in place (reversible if the student preferred the refraction look — could round-mask it instead); flagged to the student to remove for perf or keep.
+
+### Files / Mechanics Changed
+`UI/HUDController.cs` (_objRule field + per-room resize; glass body -> GlassBar capsule, softer highlight/glint).
+
+### Immediate Result
+Offline runtime `COMPILE OK` (`-warnaserror`).
+
+### Student Follow-up
+(verify: a one-objective frame shows a one-line rule; the exposure bar is a rounded translucent glass rod you can see the scene through. Decide on the orphaned GlassRefraction manager. Tunables: rule heights 26/56; body tint/alpha; highlight 0.40 / glint 0.42.)

@@ -24,9 +24,26 @@ namespace Darkroom
         public bool HasEverWon { get; private set; }
         /// Every burned print this run — the win caption calls the run "take N+1".
         public int Deaths { get; private set; }
+        /// Lost frames developed this run (a separate roll from the eleven).
+        public int LostFound { get; private set; }
+        public void FoundLostFrame() { LostFound++; }
+        /// The final "fixer wash": colour floods the world and the exit unseals.
+        public bool ExitWashed { get; private set; }
+        public void DoColorWash()
+        {
+            if (ExitWashed) return;
+            ExitWashed = true;
+            if (PostFXDirector.Instance != null) PostFXDirector.Instance.BeginColorWash();
+        }
         public float RunTime { get; private set; }
         public Vector2 CheckpointPos { get; private set; }
         public PlayerController Player { get; set; }
+
+        /// Highest frame already snapped back to Normal on entry. Each new frame
+        /// opens in Normal — exposure never carries across a boundary ("nothing
+        /// carries over", frame 9's own margin note, made a rule). Forward-only
+        /// and once-per-frame; reset on FullRestart so a replay re-arms it.
+        int _lastExposureResetRoom;
 
         /// Fired at the moment of respawn / full restart (TrailSystem clears strokes here).
         public event Action OnRespawn;
@@ -76,6 +93,19 @@ namespace Darkroom
                 }
                 if (DarkroomInput.CycleForwardPressed) em.Cycle(1);
                 else if (DarkroomInput.CycleBackPressed) em.Cycle(-1);
+
+                // Each new frame opens in Normal: the first time she crosses
+                // FORWARD into a frame, exposure snaps back. Silent — the
+                // per-frame backdrop shift is cue enough, and ForceSet is a
+                // no-op when she's already Normal (the common case). The R9
+                // blackout already did this by hand on arrival; this makes it
+                // the rule everywhere. Locked frames are bypassed by ForceSet.
+                int room = LevelData.RoomIndexAt(Player.transform.position.x);
+                if (room > _lastExposureResetRoom)
+                {
+                    _lastExposureResetRoom = room;
+                    em.ForceSet(Exposure.Normal, true);
+                }
             }
 
             if (DevWarpEnabled)
@@ -153,12 +183,14 @@ namespace Darkroom
             room = Mathf.Clamp(room, 0, maxRoom);
 
             HasNegative = true; HasFlash = true; HasShutter = true;
+            Player.GetComponent<LightPaintTrail>()?.Ignite(); // dev warp grants all → light her up
             OnRespawn?.Invoke(); // clear live strokes / transient light state
 
             Vector2 pos = RoomWarpPos(room);
             InitCheckpoint(pos);
             Player.Teleport(pos);
             if (ExposureManager.Instance != null) ExposureManager.Instance.ForceSet(Exposure.Normal);
+            _lastExposureResetRoom = room; // keep the per-frame reset coherent after a warp
             SnapCamera(-2f, 170f, -1f, 9f); // restore the real-level bounds
 
             var hud = HUDController.Instance;
@@ -181,6 +213,7 @@ namespace Darkroom
         {
             if (Player == null || HasWon || IsCinematic || IsRespawning) return;
             HasNegative = true; HasFlash = true; HasShutter = true;
+            Player.GetComponent<LightPaintTrail>()?.Ignite();
             OnRespawn?.Invoke();
             Vector2 pos = new Vector2(394f, 4.5f);
             InitCheckpoint(pos);
@@ -216,6 +249,68 @@ namespace Darkroom
             if (AudioDirector.Instance != null) AudioDirector.Instance.PlayPickup();
         }
 
+        /// Shutter pickup ceremony: she raises the camera to her eye, the pickup's
+        /// light is drawn UP into that eye, and the lens-glint ignites for good —
+        /// so "I grabbed the shutter" reads on her body as "now I draw light",
+        /// not only as a HUD banner. A ~0.7 s beat (only pickup in the game that
+        /// gates a verb, so it earns the pause). AbilityPickup routes Shutter here.
+        public void AcquireShutter(Vector3 from)
+        {
+            // NOTE: do NOT early-out on HasShutter — dev-warp ([ / ]) pre-grants every
+            // ability, so guarding on HasShutter would silently skip the ceremony every
+            // time you warp to a frame to test it. The pickup is single-trigger
+            // (AbilityPickup._consumed + Destroy), so this runs at most once per pickup.
+            if (Player == null) return;
+            StartCoroutine(ShutterPickupRoutine(from));
+        }
+
+        IEnumerator ShutterPickupRoutine(Vector3 from)
+        {
+            if (!HasShutter) Unlock(Ability.Shutter); // grant + HUD banner + TRAILS + white flash + sound
+
+            var anim = Player.GetComponent<PlayerAnimator>();
+            bool faceLeft = from.x < Player.transform.position.x;
+            Player.InputEnabled = false;
+            Player.Body.linearVelocity = new Vector2(0f, Player.Body.linearVelocity.y);
+            if (anim != null) anim.SetPose(SilhouetteArt.PlayerShoot, faceLeft); // she raises the camera
+
+            // the shutter's light lifts off the pad and is drawn into her
+            var ingest = new GameObject("ShutterIngest");
+            var isr = ingest.AddComponent<SpriteRenderer>();
+            isr.sprite = PixelArt.SoftGlow;
+            isr.sharedMaterial = VisualFactory.GlowMat;
+            isr.color = new Color(1.00f, 0.92f, 0.78f, 0.9f);
+            isr.sortingOrder = VisualFactory.OrderPickup + 2;
+            Vector3 start = from + Vector3.up * 0.2f;
+            ingest.transform.position = start;
+
+            float t = 0f; const float dur = 0.42f;
+            while (t < dur)
+            {
+                t += Time.deltaTime;
+                float e = Mathf.Clamp01(t / dur);
+                e = 1f - (1f - e) * (1f - e); // ease-out
+                Vector3 body = anim != null ? anim.BodyWorldPos : Player.transform.position;
+                ingest.transform.position = Vector3.Lerp(start, body, e);
+                float s = Mathf.Lerp(1.1f, 0.3f, e);
+                ingest.transform.localScale = new Vector3(s, s, 1f);
+                var c = isr.color; c.a = Mathf.Lerp(0.9f, 0.55f, e); isr.color = c;
+                yield return null;
+            }
+            Destroy(ingest);
+
+            // she lowers the camera and the light is hers: a spark at her hand, then
+            // her first steps paint a vivid light-trail that settles to a faint ghost.
+            if (anim != null) anim.ClearPose();
+            Vector3 sparkAt = anim != null ? anim.BodyWorldPos : Player.transform.position;
+            StrokeSparkle.Burst(sparkAt, new Color(1.00f, 0.95f, 0.82f, 1f), 12);
+            Player.GetComponent<LightPaintTrail>()?.Ignite();
+            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayDevelop(); // the quiet "it takes"
+
+            yield return new WaitForSeconds(0.4f);
+            Player.InputEnabled = true;
+        }
+
         /// The darkroom's safelight is always lit — Under is granted at boot (and
         /// after a full restart) with no pickup ceremony, so the prologue's first
         /// "lower the room to safelight" just works. Flash/Shutter stay earned.
@@ -243,6 +338,7 @@ namespace Darkroom
             // the image burns: grain burst, sprite gone, falling tone
             var anim = Player.GetComponent<PlayerAnimator>();
             StrokeSparkle.Burst(Player.transform.position, new Color(0.85f, 0.85f, 0.85f, 1f), 14);
+            CameraFollow.Instance?.AddTrauma(0.45f); // the print burns — a jolt, not a quake
             if (anim != null) anim.SetVisible(false);
             if (AudioDirector.Instance != null) AudioDirector.Instance.PlayDeath(cause);
 
@@ -290,15 +386,28 @@ namespace Darkroom
         {
             IsCinematic = true;
             Player.InputEnabled = false;
-            Player.Body.linearVelocity = new Vector2(0f, Player.Body.linearVelocity.y);
             var hud = HUDController.Instance;
             var ad = AudioDirector.Instance;
             var anim = Player.GetComponent<PlayerAnimator>();
 
             if (hud != null) hud.SetLetterbox(true, 1.0f);
             if (ExposureManager.Instance != null) ExposureManager.Instance.ForceSet(Exposure.Normal);
-            if (anim != null) anim.SetPose(SilhouetteArt.PlayerIdle, false); // turn to face the paper
-            yield return new WaitForSeconds(0.6f);
+
+            // hand off control and let her stroll the last step INTO the door on her own —
+            // no abrupt freeze-on-contact — keeping the live walk animation the whole way.
+            // Then she settles and the paper reveal takes her (reads far more natural).
+            Player.ScriptedMoveX = 0.55f;                // a calm walk toward the door (to the right)
+            float walkTarget = paperPos.x + 0.2f;        // a step past the threshold, into the doorway
+            float walkGuard = 1.6f;                       // safety timeout if anything blocks her
+            while (Player.transform.position.x < walkTarget && walkGuard > 0f)
+            {
+                walkGuard -= Time.deltaTime;
+                yield return null;
+            }
+            Player.ScriptedMoveX = 0f;
+            Player.Body.linearVelocity = new Vector2(0f, Player.Body.linearVelocity.y);
+            if (anim != null) anim.SetPose(SilhouetteArt.PlayerIdle, false); // settle, facing the paper
+            yield return new WaitForSeconds(0.35f);
 
             // the door opens — not onto a room, but onto a giant sheet of photo paper.
             // the real darkroom recedes behind a scrim as the paper fills the frame.
@@ -517,7 +626,10 @@ namespace Darkroom
             HasShutter = false;
             HasNegative = false;
             Deaths = 0;
+            LostFound = 0;
+            ExitWashed = false;
             _firstDeathNoted = false;
+            _lastExposureResetRoom = 0; // a replay re-arms the per-frame reset
             RunTime = 0f;
             OnRespawn?.Invoke();
             if (PhotoAlbum.Instance != null) PhotoAlbum.Instance.Clear();

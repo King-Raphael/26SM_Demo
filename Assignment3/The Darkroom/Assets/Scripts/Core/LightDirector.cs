@@ -16,22 +16,23 @@ namespace Darkroom
         // filmic now that bloom + ACES tonemapping carry the highlights
         static readonly Color NormalColor = new Color(0.98f, 0.95f, 0.90f);
         static readonly Color UnderColor = new Color(0.52f, 0.60f, 0.84f);
-        static readonly Color OverColor = new Color(1.0f, 0.92f, 0.80f);
+        // Over = soft warm key — a touch brighter and warmer than Normal, but NOT a
+        // blow-out. 1.62 + the post-exposure clipped mid-grey to flat white; the warm
+        // background now carries Over's identity, so the foreground only needs lifting.
+        static readonly Color OverColor = new Color(1.04f, 0.98f, 0.91f);
         const float NormalIntensity = 1.38f;
         const float UnderIntensity = 0.74f;
-        // Over's "overexposed" identity now comes mainly from the warm-WHITE camera
-        // background (see *Bg below), so the global light stays moderate — that keeps
-        // the foreground reading as shapes against the bright back, not blown too.
-        const float OverIntensity = 1.3f;
+        const float OverIntensity = 1.46f;
         const float LerpSpeed = 6f;
 
-        // Per-exposure CAMERA BACKGROUND colour: the mode's identity lives in the
-        // backdrop, not a full-screen tint over the foreground — so elements keep
-        // their own colour and read as silhouettes against it. Under = deep blue,
-        // Normal = near-black (a touch grey), Over = warm white.
+        // Per-exposure CAMERA CLEAR colour = the empty VOID behind the parallax backdrop.
+        // Driven PER EXPOSURE here (CameraFollow no longer overrides it by player-x), so
+        // the void ITSELF now reads the mode — not just the backdrop art on top of it.
+        // Together the void + the BackdropTint'd "photo" make the WHOLE frame take the
+        // mode's colour: Under = deep blue, Normal = near-black, Over = soft warm-white.
         static readonly Color NormalBg = new Color(0.07f, 0.07f, 0.08f);
-        static readonly Color UnderBg = new Color(0.04f, 0.06f, 0.14f);
-        static readonly Color OverBg = new Color(0.88f, 0.83f, 0.73f);
+        static readonly Color UnderBg  = new Color(0.05f, 0.07f, 0.18f); // dark blue void
+        static readonly Color OverBg   = new Color(0.90f, 0.86f, 0.78f); // soft warm-white void
 
         Light2D _global;
         Camera _cam;
@@ -105,8 +106,11 @@ namespace Darkroom
             if (_cam != null) _cam.backgroundColor = Color.Lerp(_cam.backgroundColor, _targetBg, k);
         }
 
-        /// Point light helper used by the builders.
-        public static Light2D CreatePoint(Transform parent, Vector2 localPos, Color c, float radius, float intensity)
+        /// Point light helper used by the builders. shadowsEnabled is forced OFF by default:
+        /// Light2D ships with shadows ON (0.75), so once any ShadowCaster2D exists EVERY light
+        /// made here (dark paths, sensors, enemies, the player glow) would silently cast —
+        /// the perf cliff. Only the lamps opt in (castsShadows:true) + a nearest-N culler.
+        public static Light2D CreatePoint(Transform parent, Vector2 localPos, Color c, float radius, float intensity, bool castsShadows = false)
         {
             var go = new GameObject("Light2D");
             go.transform.SetParent(parent, false);
@@ -118,6 +122,13 @@ namespace Darkroom
             l.pointLightInnerRadius = 0f;
             l.pointLightOuterRadius = radius;
             l.falloffIntensity = 0.7f;
+            l.shadowsEnabled = castsShadows;
+            if (castsShadows)
+            {
+                l.shadowIntensity = 0.55f;   // softer than the 0.75 default — mood, not hard cutouts
+                l.shadowSoftness = 0.6f;     // wide penumbra suits the diffuse hanging bulbs
+                l.volumetricShadowsEnabled = false;
+            }
             return l;
         }
     }

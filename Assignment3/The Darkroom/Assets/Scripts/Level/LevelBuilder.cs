@@ -38,6 +38,8 @@ namespace Darkroom
                     Trail(t.name, t.points);
                 foreach (var fp in room.fixPlats)
                     Latent(fp.name, new Vector2(fp.cx, fp.cy), new Vector2(fp.w, fp.h));
+                foreach (var lf in room.lostFrames)
+                    Lost(lf.name, new Vector2(lf.cx, lf.cy), new Vector2(lf.w, lf.h));
                 foreach (var e in room.enemies)
                     Enemy(e.name, new Vector2(e.cx, e.cy), e.range, e.speed);
                 foreach (var d in room.doors)
@@ -65,6 +67,12 @@ namespace Darkroom
                             if (isr != null) isr.color = new Color(0.95f, 0.93f, 0.87f, 1f); // blank photo paper
                         }
                     }
+                    else
+                    {
+                        // the finale exit: sealed until the colour wash develops the print
+                        var le = ex.GetComponent<LevelExit>();
+                        if (le != null) le.RequiresWash = true;
+                    }
                 }
             }
 
@@ -73,6 +81,19 @@ namespace Darkroom
             {
                 foreach (var s in rooms[r].sensors)
                 {
+                    if (s.wash)
+                    {
+                        // a wash tray: a DOORLESS LocalLux meter that develops the
+                        // final print into colour (and unseals the exit) when lit
+                        var wgo = Sensor(s.name, new Vector2(s.cx, s.cy), null, s.mode, s.lux);
+                        var ps = wgo.GetComponent<PhotoSensor>();
+                        if (ps != null) ps.onActivated = () =>
+                        {
+                            if (GameManager.Instance != null) GameManager.Instance.DoColorWash();
+                            if (AudioDirector.Instance != null) AudioDirector.Instance.PlayDevelopLong();
+                        };
+                        continue;
+                    }
                     doorMap.TryGetValue(s.doorId, out var door);
                     if (door == null)
                         Debug.LogError("[LevelBuilder] Sensor " + s.name + " references missing door " + s.doorId);
@@ -160,8 +181,8 @@ namespace Darkroom
             dir.Overlays.Add(BuildOverlayLine(parent, "R0_FarEdge",    -7f,   2.8f, 4f,  0.04f, 0f, edge, VisualFactory.OrderExposure - 1));
             Color seam = new Color(0.05f, 0.05f, 0.07f, 1f);
             dir.Overlays.Add(BuildOverlayLine(parent, "R0_DoorSeam",   -6f,   4.4f, 0.05f, 2.8f,  0f, seam, VisualFactory.OrderExit + 1));
-            dir.Overlays.Add(BuildOverlayLine(parent, "R0_DoorCrackA", -6.3f, 4.9f, 0.04f, 1.2f,  9f, seam, VisualFactory.OrderExit + 1));
-            dir.Overlays.Add(BuildOverlayLine(parent, "R0_DoorCrackB", -5.7f, 3.9f, 0.04f, 1.4f, -7f, seam, VisualFactory.OrderExit + 1));
+            dir.Overlays.Add(BuildCrack(parent, "R0_DoorCrackA", -6.3f, 4.9f, 1.2f,  9f, seam, VisualFactory.OrderExit + 1));
+            dir.Overlays.Add(BuildCrack(parent, "R0_DoorCrackB", -5.7f, 3.9f, 1.4f, -7f, seam, VisualFactory.OrderExit + 1));
         }
 
         /// The red safelight, drawn procedurally in the same idiom as the hanging
@@ -300,18 +321,38 @@ namespace Darkroom
             }
         }
 
+        /// A door/paper CRACK — same wandering, broken-up FilmScratch hairline as the wall
+        /// scratches but dark (a crack on bright paper). Faded in by the director.
+        static SpriteRenderer BuildCrack(Transform parent, string name, float cx, float cy, float len, float angle, Color col, int order)
+        {
+            var g = new GameObject(name);
+            g.transform.SetParent(parent, false);
+            g.transform.position = new Vector3(cx, cy, 0f);
+            g.transform.rotation = Quaternion.Euler(0f, 0f, angle);
+            g.transform.localScale = new Vector3(0.55f, len, 1f); // thin crack
+            var sr = g.AddComponent<SpriteRenderer>();
+            sr.sprite = PixelArt.FilmScratch;
+            sr.sharedMaterial = VisualFactory.SpriteMat;
+            col.a = 0f; sr.color = col; // hidden until the director lifts it
+            sr.sortingOrder = order;
+            sr.flipX = ((int)(cy * 9f) & 1) == 0;
+            return sr;
+        }
+
         static SpriteRenderer BuildScratch(Transform parent, float x, float y, float len, float angle)
         {
             var g = new GameObject("R0_Scratch");
             g.transform.SetParent(parent, false);
             g.transform.position = new Vector3(x, y, 0f);
             g.transform.rotation = Quaternion.Euler(0f, 0f, angle);
-            g.transform.localScale = new Vector3(0.014f, len, 1f); // thin
+            g.transform.localScale = new Vector3(0.7f, len, 1f); // FilmScratch is ~0.06u wide @ppu160
             var sr = g.AddComponent<SpriteRenderer>();
-            sr.sprite = VisualFactory.WhiteSprite;
+            sr.sprite = PixelArt.FilmScratch;            // wandering, broken-up, feathered — not a solid stick
             sr.sharedMaterial = VisualFactory.SpriteMat; // soft alpha, not a glowing neon stick
             sr.color = new Color(0.62f, 0.66f, 0.72f, 0f); // desaturated grey-blue film damage, faded in by the director
             sr.sortingOrder = VisualFactory.OrderExposure - 1;
+            sr.flipX = ((int)(x * 7f) & 1) == 0;         // deterministic variety so the 4 don't repeat
+            sr.flipY = ((int)(y * 5f) & 1) == 0;
             return sr;
         }
 
@@ -468,6 +509,9 @@ namespace Darkroom
             }
             var bc = go.AddComponent<BoxCollider2D>();
             bc.size = s;
+            // solid ground throws a real shadow from the lamps (skip thin decoration lips/walls)
+            if (t == ExposureObjectType.StaticGround && s.x >= 1f && s.y >= 0.3f)
+                ShadowFactory.AddBoxCaster(go, s);
 
             // walkable platforms get a "lit lip": a soft rim that bleeds light down from
             // the top edge (3D-ledge cue) + a bright core catch-light on top of it. The
@@ -554,48 +598,49 @@ namespace Darkroom
         /// A wall of shadow: solid until a delivered stroke lights it. Drawn on
         /// GlowMat so it stays readable even in the dark (a shadow you can see),
         /// and on the World layer so the player collides while it is sealed.
+        // (threshold is unused now — kept in the signature so the data + build loop
+        // stay byte-stable; the curtain is exposure-driven, not light-driven.)
         public static GameObject Umbral(string name, Vector2 c, Vector2 s, float threshold)
         {
+            // A darkroom BLACKOUT CURTAIN: a heavy cold drape, solid in Under/Normal,
+            // that the enlarger light WASHES OPEN in Over — a BrightBarrier (passable
+            // in OVER). No drawn light trail; flood it with light (3) and step through.
+            // The standard exposure jam-rule prevents re-solidifying it on the player.
             var go = NewTiledBox(name, c, s, PixelArt.BarrierTile, VisualFactory.OrderExposure, Layers.World);
             var sr = go.GetComponent<SpriteRenderer>();
             sr.sharedMaterial = VisualFactory.GlowMat;
-            sr.color = new Color(0.16f, 0.13f, 0.22f, 1f); // deep-violet shadow matter
+            sr.color = new Color(0.16f, 0.18f, 0.24f, 1f); // cold-dark blackout fabric (no violet)
 
             var bc = go.AddComponent<BoxCollider2D>();
             bc.size = s;
 
-            // a cold halo so the shade reads against the near-black background
-            var ubHalo = Halo(go.transform, new Vector2(s.x + 0.7f, s.y + 0.7f),
-                new Color(0.24f, 0.20f, 0.36f, 0.22f), VisualFactory.OrderExposure - 1);
+            // a faint cold rim so the drape reads against the near-black background
+            var halo = Halo(go.transform, new Vector2(s.x + 0.6f, s.y + 0.6f),
+                new Color(0.30f, 0.36f, 0.46f, 0.18f), VisualFactory.OrderExposure - 1);
 
-            // roiling undeveloped-emulsion overlay (the "alive" boil)
-            var roilGO = new GameObject("Roil");
-            roilGO.transform.SetParent(go.transform, false);
-            var roil = roilGO.AddComponent<SpriteRenderer>();
-            roil.sprite = ProcGfx.EmulsionFrames[0];
-            roil.sharedMaterial = VisualFactory.GlowMat;
-            roil.drawMode = SpriteDrawMode.Tiled;
-            roil.size = s;
-            roil.color = new Color(1f, 1f, 1f, 0.5f);
-            roil.sortingOrder = VisualFactory.OrderExposure + 1;
-            var fc = roilGO.AddComponent<FrameCycle>();
-            fc.frames = ProcGfx.EmulsionFrames;
-            fc.fps = 6f;
-            fc.randomOrder = true;
+            // a subtle cool weave so it reads as hung fabric, not a flat slab
+            var foldGO = new GameObject("Folds");
+            foldGO.transform.SetParent(go.transform, false);
+            var fold = foldGO.AddComponent<SpriteRenderer>();
+            fold.sprite = ProcGfx.GrainTile;
+            fold.sharedMaterial = VisualFactory.GlowMat;
+            fold.drawMode = SpriteDrawMode.Tiled;
+            fold.size = s;
+            fold.color = new Color(0.55f, 0.62f, 0.75f, 0.18f);
+            fold.sortingOrder = VisualFactory.OrderExposure + 1;
 
-            var ubLight = LightDirector.CreatePoint(go.transform, new Vector2(0f, -s.y * 0.4f),
-                new Color(0.52f, 0.32f, 0.82f), Mathf.Max(s.x, s.y) * 0.5f + 1.2f, 0.4f);
-
-            var ub = go.AddComponent<UmbralBarrier>();
-            ub.retractThreshold = threshold;
-            ub.boxSize = s;
-            ub.onAlpha = a =>
+            // BrightBarrier: solid in Under+Normal (visible drape), passable + faded
+            // in OVER. The ExposureObject toggles the collider + body alpha per the
+            // matrix; OnAlphaApplied fades the rim + weave in lockstep.
+            var eo = go.AddComponent<ExposureObject>();
+            eo.type = ExposureObjectType.BrightBarrier;
+            eo.boxSize = s;
+            eo.OnAlphaApplied = a =>
             {
-                var rc = roil.color; rc.a = a * 0.5f; roil.color = rc;
-                var hc = ubHalo.color; hc.a = a * 0.22f; ubHalo.color = hc;
-                ubLight.intensity = a * 0.45f;
+                var hc = halo.color; hc.a = a * 0.18f; halo.color = hc;
+                var fcl = fold.color; fcl.a = a * 0.18f; fold.color = fcl;
             };
-            ub.onAlpha(1f); // starts sealed/solid
+            eo.Reapply();
             return go;
         }
 
@@ -620,6 +665,7 @@ namespace Darkroom
             lift.topY = topY;
             lift.bottomY = bottomY;
             lift.boxSize = s;
+            lift.sinkSpeed = 1.1f; // slow, vicious, poetic — the descent should DREAD
             lift.onAlpha = BuildLiftDecor(go, x, topY, bottomY, s,
                 new Color(0.70f, 0.55f, 1.10f, 1f),   // HDR violet catch-light
                 new Color(0.32f, 0.22f, 0.52f, 0.42f), // churning underside
@@ -704,25 +750,131 @@ namespace Darkroom
             var bp = go.AddComponent<BurnPaper>();
             bp.boxSize = s;
 
-            // a charred hole that grows from the centre as the paper burns through
-            var scarGO = new GameObject("Char");
-            scarGO.transform.SetParent(go.transform, false);
-            var scar = scarGO.AddComponent<SpriteRenderer>();
-            scar.sprite = ProcGfx.CharScar;
-            scar.sharedMaterial = VisualFactory.SpriteMat;
-            scar.color = new Color(1f, 1f, 1f, 0f);
-            scar.sortingOrder = VisualFactory.OrderExposure + 1;
-            float scarFit = Mathf.Min(s.x, s.y) * 1.15f / Mathf.Max(0.01f, scar.sprite.bounds.size.x);
+            // Real burning eats in from SEVERAL places, not one centred disc. Scatter
+            // a handful of ragged multi-lobe scars across the wall face (deterministic
+            // seed, so it's stable across rebuilds), each with its OWN staggered
+            // ignition threshold. As k rises they light one by one and grow until the
+            // lobes overlap and read as a single irregular hole.
+            // seed from the wall's position so every wall burns DIFFERENTLY but stably
+            // across rebuilds; vary the spot COUNT (4-6) too for extra per-wall variety.
+            int seed = Mathf.RoundToInt(c.x * 97f + c.y * 131f);
+            var rng = new System.Random(seed);
+            int SPOTS = 4 + rng.Next(0, 3);
+
+            var spotTr = new Transform[SPOTS];
+            var spotSr = new SpriteRenderer[SPOTS];
+            var spotDot = new SpriteRenderer[SPOTS];
+            var thr = new float[SPOTS];
+            var fitArr = new float[SPOTS];
+
+            // the dark fill is only ~60% of the sprite, so oversize each blob to span
+            // the whole short side (1.5 ≈ 0.9 / 0.6) — the lobes then overlap into one
+            // ragged hole rather than reading as scattered pocks on white paper.
+            float lobeFit = Mathf.Max(0.2f, Mathf.Min(s.x, s.y) * 1.5f);
+            bool tall = s.y >= s.x;
+            float longLen = tall ? s.y : s.x;
+            // shift the whole burn cluster along the wall, so the opening lands somewhere
+            // different on each wall instead of always dead-centre.
+            float chainShift = ((float)rng.NextDouble() - 0.5f) * longLen * 0.2f;
+
+            for (int i = 0; i < SPOTS; i++)
+            {
+                var spotGO = new GameObject("Char" + i);
+                spotGO.transform.SetParent(go.transform, false);
+                // chain the spots evenly ALONG the long axis (+jitter), hugging the
+                // short-axis centre so neighbours overlap and merge into one ragged hole.
+                float along = ((i + 0.5f) / SPOTS - 0.5f) * longLen * 0.8f + chainShift
+                            + ((float)rng.NextDouble() - 0.5f) * longLen * 0.2f;   // more wander
+                float across = ((float)rng.NextDouble() - 0.5f) * Mathf.Min(s.x, s.y) * 0.34f;
+                float lx = tall ? across : along;
+                float ly = tall ? along : across;
+                spotGO.transform.localPosition = new Vector3(lx, ly, 0f);
+                spotGO.transform.localRotation = Quaternion.Euler(0f, 0f, (float)rng.NextDouble() * 360f);
+
+                var sr = spotGO.AddComponent<SpriteRenderer>();
+                sr.sprite = ProcGfx.CharScar(seed + i);                       // a distinct ragged variant
+                sr.sharedMaterial = VisualFactory.SpriteMat;                  // lit, sits in the dark room
+                sr.color = new Color(1f, 1f, 1f, 0f);
+                sr.sortingOrder = VisualFactory.OrderExposure + 1;
+
+                // vary each spot's size so no two walls eat through quite the same way
+                float spotFit = lobeFit * (0.8f + (float)rng.NextDouble() * 0.55f);
+                float fit = spotFit / Mathf.Max(0.01f, sr.sprite.bounds.size.x);
+                spotGO.transform.localScale = Vector3.one * (0.12f * fit);   // start as a small pock
+
+                // a warm ember dot that flares when this spot first lights, then
+                // darkens as the soot takes over (GlowMat so it actually glows).
+                var dotGO = new GameObject("Ember");
+                dotGO.transform.SetParent(spotGO.transform, false);
+                dotGO.transform.localScale = Vector3.one * 0.5f;             // local to the spot's scale
+                var dot = dotGO.AddComponent<SpriteRenderer>();
+                dot.sprite = PixelArt.SoftGlow;
+                dot.sharedMaterial = VisualFactory.GlowMat;
+                dot.color = new Color(1f, 0.52f, 0.16f, 0f);
+                dot.sortingOrder = VisualFactory.OrderExposure + 2;
+
+                spotTr[i] = spotGO.transform;
+                spotSr[i] = sr;
+                spotDot[i] = dot;
+                fitArr[i] = fit;
+                // spot 0 lights almost immediately; the last around k~0.55
+                thr[i] = (i / (float)SPOTS) * 0.5f + (float)rng.NextDouble() * 0.06f;
+            }
+
+            float trickle = 0f;
             bp.OnCharProgress = k =>
             {
-                float sc = Mathf.Lerp(0.15f, 1.15f, k) * scarFit;
-                scarGO.transform.localScale = new Vector3(sc, sc, 1f);
-                var cc = scar.color; cc.a = Mathf.Clamp01(k * 1.1f); scar.color = cc;
+                for (int i = 0; i < SPOTS; i++)
+                {
+                    float kk = Mathf.Clamp01((k - thr[i]) / Mathf.Max(0.01f, 1f - thr[i]));
+                    if (kk <= 0f)
+                    {
+                        spotSr[i].color = new Color(1f, 1f, 1f, 0f);
+                        spotDot[i].color = new Color(1f, 0.52f, 0.16f, 0f);
+                        continue;
+                    }
+                    float ease = 1f - (1f - kk) * (1f - kk);                  // easeOut
+                    float sc = Mathf.Lerp(0.12f, 1f, ease) * fitArr[i];
+                    spotTr[i].localScale = new Vector3(sc, sc, 1f);
+                    var cc = spotSr[i].color; cc.a = Mathf.Clamp01(kk * 1.3f); spotSr[i].color = cc;
+                    // ember dot pulses while the spot is young, then fades to soot
+                    float da = (kk < 0.65f) ? (0.7f + 0.2f * Mathf.Sin(Time.time * 30f + i * 1.7f)) * (1f - kk / 0.65f) : 0f;
+                    var dc = spotDot[i].color; dc.a = Mathf.Clamp01(da); spotDot[i].color = dc;
+                }
+                // a modest live trickle: one rising ember / occasional falling flake
+                // from a random lit spot every ~0.13s while burning (self-destroying).
+                if (k > 0.12f && k < 1f)
+                {
+                    trickle += Time.deltaTime;
+                    if (trickle >= 0.13f)
+                    {
+                        trickle = 0f;
+                        int j = rng.Next(0, SPOTS);
+                        if (k > thr[j])
+                        {
+                            Vector2 wp = spotTr[j].position;
+                            StrokeSparkle.Spawn(wp, new Color(1f, 0.55f, 0.2f, 1f));   // rising ember
+                            if (rng.NextDouble() > 0.5)
+                                AshBurst.Flake(wp, new Color(0.20f, 0.19f, 0.18f, 0.8f)); // falling flake
+                        }
+                    }
+                }
             };
             bp.OnBurned = () =>
             {
-                scarGO.transform.localScale = Vector3.one * (1.15f * scarFit);
-                scar.color = new Color(1f, 1f, 1f, 0.85f);
+                // leave only SOFT, faint soot smudges where the holes ate through — a
+                // feathered scorch stain, not crisp ring outlines (which read as drawn
+                // doodles, especially on the bright OVER wall). The ash/ember aftermath
+                // fires from BurnPaper.
+                for (int i = 0; i < SPOTS; i++)
+                {
+                    spotDot[i].gameObject.SetActive(false);
+                    spotSr[i].gameObject.SetActive(true);
+                    spotSr[i].sprite = ProcGfx.SootStain(seed + i);
+                    float sc = fitArr[i];                 // full-grown, in place
+                    spotTr[i].localScale = new Vector3(sc, sc, 1f);
+                    spotSr[i].color = new Color(1f, 1f, 1f, 0.4f);  // faint residue
+                }
             };
             return go;
         }
@@ -750,6 +902,47 @@ namespace Darkroom
             var fp = go.AddComponent<FixPlatform>();
             fp.boxSize = s;
             fp.grainVeil = veil;
+            return go;
+        }
+
+        /// A lost frame (LostFrame): a faint cool latent negative hidden in a
+        /// verb-gated pocket; walk into it to develop it into the gallery. Exactly
+        /// ONE root child (the trigger), so the validator object count stays exact.
+        public static GameObject Lost(string name, Vector2 c, Vector2 s)
+        {
+            // ONE root child: an un-scaled trigger (so child visuals aren't distorted, and
+            // the validator's root-child count stays exact). The look is a small FRAMED
+            // print — a cool undeveloped negative — with a faint halo, not a grain box.
+            var go = new GameObject(name);
+            go.layer = Layers.Triggers;
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(c.x, c.y, 0f);
+            var bc = go.AddComponent<BoxCollider2D>();
+            bc.size = s;
+            bc.isTrigger = true;
+            go.AddComponent<LostFrame>();
+
+            float fit = Mathf.Min(s.x, s.y) * 1.05f;
+            float ph = PixelArt.PrintFrame.bounds.size.y;
+            float k = ph > 0.01f ? fit / ph : 1f;
+
+            var glow = new GameObject("Glow");
+            glow.transform.SetParent(go.transform, false);
+            glow.transform.localScale = new Vector3(fit * 2.2f, fit * 2.2f, 1f);
+            var gsr = glow.AddComponent<SpriteRenderer>();
+            gsr.sprite = PixelArt.SoftGlow;
+            gsr.sharedMaterial = VisualFactory.GlowMat;
+            gsr.color = new Color(0.55f, 0.74f, 0.95f, 0.20f); // cool latent allure
+            gsr.sortingOrder = VisualFactory.OrderExposure - 1;
+
+            var print = new GameObject("Print");
+            print.transform.SetParent(go.transform, false);
+            print.transform.localScale = new Vector3(k, k, 1f);
+            var sr = print.AddComponent<SpriteRenderer>();
+            sr.sprite = PixelArt.PrintFrame;
+            sr.sharedMaterial = VisualFactory.GlowMat;
+            sr.color = new Color(0.60f, 0.78f, 0.97f, 0.62f); // a hidden, undeveloped negative
+            sr.sortingOrder = VisualFactory.OrderExposure;
             return go;
         }
 
@@ -871,6 +1064,8 @@ namespace Darkroom
             var go = NewTiledBox(id, c, s, PixelArt.DoorTile, VisualFactory.OrderDoor, Layers.World);
             var bc = go.AddComponent<BoxCollider2D>();
             bc.size = s;
+            // a sealed door is solid geometry — it blocks the lamps (caster disabled on open)
+            ShadowFactory.AddBoxCaster(go, s);
 
             // dark recessed lens lower on the panel (concept-art detail)
             var lens = new GameObject("Lens");
@@ -947,20 +1142,43 @@ namespace Darkroom
         {
             var go = NewTrigger(name, c, new Vector2(1f, 2f));
 
-            // small hanging-photo marker: dim until developed (grayscale only —
-            // safelight red is reserved)
+            // A print pinned on the drying line: a cord + clothespin + a photographic
+            // frame that hangs as a cool, undeveloped negative and DEVELOPS warm when the
+            // player arrives (Checkpoint.Develop). Grayscale only — safelight red reserved.
             var marker = new GameObject("Marker");
             marker.transform.SetParent(go.transform, false);
-            marker.transform.localPosition = new Vector3(0f, 0.55f, 0f);
-            var sr = marker.AddComponent<SpriteRenderer>();
-            sr.sprite = PixelArt.CheckpointMarker;
-            sr.sharedMaterial = VisualFactory.GlowMat;
-            sr.color = new Color(0.5f, 0.5f, 0.5f, 0.8f);
-            sr.sortingOrder = VisualFactory.OrderExposure - 2;
+            // NewTrigger scales `go` to (1,2) for the catch box; counter-scale the marker so
+            // its visuals (the square print, cord, clip, glow) AREN'T stretched 2x vertically.
+            marker.transform.localScale = new Vector3(1f, 0.5f, 1f);
+            int ord = VisualFactory.OrderExposure - 2;
+
+            SpriteRenderer Part(string n, Vector3 lp, Vector3 sc, Sprite spr, Color col, int order)
+            {
+                var o = new GameObject(n);
+                o.transform.SetParent(marker.transform, false);
+                o.transform.localPosition = lp;
+                o.transform.localScale = sc;
+                var s = o.AddComponent<SpriteRenderer>();
+                s.sprite = spr; s.color = col; s.sortingOrder = order;
+                s.sharedMaterial = VisualFactory.GlowMat; // self-lit so it reads in the dark
+                return s;
+            }
+
+            Part("Cord", new Vector3(0f, 1.2f, 0f), new Vector3(0.05f, 0.6f, 1f),
+                VisualFactory.WhiteSprite, new Color(0.30f, 0.32f, 0.36f, 0.9f), ord - 1);
+            var glow = Part("Glow", new Vector3(0f, 0.58f, 0f), new Vector3(1.05f, 1.05f, 1f),
+                PixelArt.SoftGlow, new Color(1f, 0.93f, 0.78f, 0f), ord - 1);            // off until developed
+            var frame = Part("Frame", new Vector3(0f, 0.58f, 0f), Vector3.one,
+                PixelArt.PrintFrame, new Color(0.46f, 0.50f, 0.60f, 0.92f), ord);        // cool negative
+            var clip = Part("Clip", new Vector3(0f, 0.86f, 0f), new Vector3(0.30f, 0.15f, 1f),
+                VisualFactory.WhiteSprite, new Color(0.62f, 0.62f, 0.60f, 1f), ord + 1); // clothespin
 
             var cp = go.AddComponent<Checkpoint>();
             cp.Caption = caption;
             cp.RoomIndex = roomIndex;
+            cp.Frame = frame;
+            cp.Glow = glow;
+            cp.Clip = clip.transform;
             return go;
         }
 

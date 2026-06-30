@@ -35,7 +35,14 @@ namespace Darkroom
             if (_consumed) return;
             if (other.gameObject.layer != Layers.Player) return;
             _consumed = true;
-            if (GameManager.Instance != null) GameManager.Instance.Unlock(ability);
+            var gm = GameManager.Instance;
+            if (gm != null)
+            {
+                // the Shutter gets the camera-raise + light-bloom ceremony (it grants a
+                // VERB); the other abilities unlock straight (HUD + flash only).
+                if (ability == Ability.Shutter) gm.AcquireShutter(transform.position);
+                else gm.Unlock(ability);
+            }
             Destroy(gameObject);
         }
     }
