@@ -3834,3 +3834,41 @@ Offline runtime `COMPILE OK` (`-warnaserror`).
 
 ### Student Follow-up
 (verify: a one-objective frame shows a one-line rule; the exposure bar is a rounded translucent glass rod you can see the scene through. Decide on the orphaned GlassRefraction manager. Tunables: rule heights 26/56; body tint/alpha; highlight 0.40 / glint 0.42.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Interaction 128 — Raw Interaction Log
+
+**Time:** 2026-06-26
+**Development Stage:** WebGL readiness — StreamingAssets loading + orphan cleanup (Milestone 28)
+**Current Goal:** make the game exportable as a WebGL page-embed. The blocker: art/music loaded via sync File/Directory APIs, which do not exist on WebGL (no filesystem, network is async-only).
+
+### Student Prompt
+(想导出成 Webpage-based game 插入网页 → 好的,开始)
+
+### Agent Response Summary
+Made StreamingAssets loading WebGL-safe without disturbing desktop:
+- **manifest.txt** (new, in StreamingAssets) — a shipped file list, because WebGL cannot enumerate a remote directory. Lists every art/*.png + root *.jpg + music/*.mp3.
+- **PixelArt**: `LoadExternal` platform-split — WebGL decodes from a byte cache, desktop keeps File.ReadAllBytes. New `PreloadWebAssets()` coroutine (WebGL) fetches manifest + every non-music file via UnityWebRequest into the cache at boot. New `EnumerateArt(pattern)` — WebGL filters the manifest, desktop lists the dir; `BackdropScenes`/`MidgroundClutter`/`GlobArt` all routed through it (also de-duplicated three copies of the glob loop). `WebManifest` exposed for audio.
+- **Bootstrap**: split `Boot` → `BuildWorld`; on WebGL a tiny `BootPreloader` MonoBehaviour runs `PreloadThenBuild` (yield preload, then build) so the synchronous art getters find their bytes; desktop builds immediately. **Removed the orphaned `GlassRefraction` manager** (unused since the slider went to the GlassBar capsule; it was doing a per-frame ScreenCapture grab — bad on WebGL).
+- **AudioDirector.LoadMusic**: platform-split discovery — WebGL picks the first `music/*` from `WebManifest` and builds the URL (space→%20); desktop keeps Directory.GetFiles. Shared async UnityWebRequestMultimedia load.
+- **DarkroomManifest.cs** (new Editor tool) — menu `Darkroom ▸ Regenerate StreamingAssets Manifest` rewrites manifest.txt from the folder (run after adding art). New-file metas hand-made (editor open). Namespace `Darkroom` (not `Darkroom.EditorTools` — that name is a class in DarkroomValidator; collision fixed).
+
+### Files / Mechanics Changed
+`Core/PixelArt.cs`, `Core/Bootstrap.cs`, `Core/AudioDirector.cs`, new `Editor/DarkroomManifest.cs` (+meta), new `StreamingAssets/manifest.txt` (+meta). GlassRefraction.cs now dead code (kept, not instantiated).
+
+### Immediate Result
+Offline `COMPILE OK` on THREE passes: desktop (`#else`), `-define:UNITY_WEBGL` (the WebGL branches), and Editor (`-define:UNITY_EDITOR`). All `-warnaserror`.
+
+### Student Follow-up
+(next = the student builds in Unity: install WebGL module, switch platform, Player Settings Brotli + Decompression Fallback + Linear, add Level01 to Scenes in Build, Build; then iframe-embed. If art is added later, run the Regenerate Manifest menu first. Can I not run the actual WebGL build headless here — student does it in the Editor.)
+
+### Follow-up (Interaction 128.1) — web embed: scrollbars + boot blue-screen
+
+**Student:** the deployed embed shows bottom/right scrollbars in Chrome AND Safari, and the first load shows a blue screen for a while.
+
+**Scrollbars (no rebuild needed):** the stock Unity template renders a FIXED 960x600 canvas (`width=960 height=600` + `canvas.style.width="960px"` in the desktop branch) plus a footer bar — that overflows the host iframe on both axes. Patched the deployed `works-embeds/the-darkroom/index.html` (and mirrored to `Darkroom1.0/index.html`): CSS override fills the iframe viewport (html/body 100%, overflow hidden, near-black letterbox #0a0a0c; container inset:0; canvas 100%), footer reduced to a quiet fullscreen button overlay (logo/title hidden), desktop JS branch now sets canvas style to 100%. Engine keeps the render target matched to DOM size x dpr, so it stays crisp. Pushed to Port repo (89c363e).
+
+**Blue screen (needs rebuild):** the M28 WebGL preload runs BEFORE BuildWorld, but the real clear colour is only set in SetupCamera (inside BuildWorld) — so the template camera's default sky-blue clear filled the canvas for the whole StreamingAssets fetch. Fix in `Bootstrap.Boot` (WebGL branch): paint `Camera.main` SolidColor + `VisualFactory.Background` near-black immediately, before starting the preloader. Offline `COMPILE OK` (desktop + `-define:UNITY_WEBGL`).
+
+**Next:** student rebuilds in Unity (same Darkroom1.0 output); then only `Build/*` needs re-copying to the site (the deployed index.html keeps the embed-fit patch — a rebuild regenerates the stock template index.html, do NOT copy it over).

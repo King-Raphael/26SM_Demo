@@ -50,6 +50,42 @@ namespace Darkroom
             for (int i = 0; i < 32; i++)
                 Physics2D.IgnoreLayerCollision(Layers.Strokes, i, i != Layers.Player);
 
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // Paint the scene camera near-black IMMEDIATELY: the preload below delays
+            // BuildWorld (which sets the real clear colour), and the template camera's
+            // default sky-blue clear would otherwise fill the canvas for the whole
+            // fetch — the "blue screen" before the darkroom fades in.
+            var bootCam = Camera.main;
+            if (bootCam != null)
+            {
+                bootCam.clearFlags = CameraClearFlags.SolidColor;
+                bootCam.backgroundColor = VisualFactory.Background;
+            }
+
+            // WebGL has no filesystem: preload StreamingAssets (manifest.txt + art)
+            // ASYNCHRONOUSLY before building, so the synchronous art getters find
+            // their bytes ready. A tiny host runs the coroutine; the screen stays on
+            // Unity's loading bar until it finishes.
+            var host = new GameObject("_BootPreloader").AddComponent<BootPreloader>();
+            host.StartCoroutine(PreloadThenBuild(host.gameObject));
+#else
+            BuildWorld();
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        static System.Collections.IEnumerator PreloadThenBuild(GameObject host)
+        {
+            yield return PixelArt.PreloadWebAssets();
+            BuildWorld();
+            Object.Destroy(host);
+        }
+#endif
+
+        /// Managers → HUD → backdrop → level → player. Runs immediately on desktop;
+        /// on WebGL it runs once the StreamingAssets preload has completed.
+        static void BuildWorld()
+        {
             var managers = new GameObject("_Managers");
             var gm = managers.AddComponent<GameManager>();
             managers.AddComponent<ExposureManager>();
@@ -59,7 +95,6 @@ namespace Darkroom
             managers.AddComponent<LightField>();
             managers.AddComponent<PauseController>();
             managers.AddComponent<PhotoAlbum>();
-            managers.AddComponent<GlassRefraction>(); // before the HUD: builds the glass material it uses
             managers.AddComponent<DarkroomPostDriver>(); // feeds the Darkroom/Post fullscreen shader globals
 
             HUDController.Build();
@@ -114,4 +149,9 @@ namespace Darkroom
                 cam.gameObject.AddComponent<VaporMotes>(); // faint rising chemical haze (W4 atmosphere)
         }
     }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+    /// Minimal coroutine host for the WebGL StreamingAssets preload at boot.
+    public class BootPreloader : MonoBehaviour { }
+#endif
 }

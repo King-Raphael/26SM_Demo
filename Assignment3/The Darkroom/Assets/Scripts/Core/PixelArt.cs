@@ -84,10 +84,17 @@ namespace Darkroom
         {
             try
             {
+                byte[] bytes;
+#if UNITY_WEBGL && !UNITY_EDITOR
+                // WebGL has no filesystem — decode from the boot-time byte cache
+                if (!_webBytes.TryGetValue(file, out bytes)) return null;
+#else
                 string p = System.IO.Path.Combine(Application.streamingAssetsPath, file);
                 if (!System.IO.File.Exists(p)) return null;
+                bytes = System.IO.File.ReadAllBytes(p);
+#endif
                 var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-                if (!tex.LoadImage(System.IO.File.ReadAllBytes(p))) return null;
+                if (!tex.LoadImage(bytes)) return null;
                 tex.wrapMode = TextureWrapMode.Repeat; // tiled walls need it; moot for feathered scenes/cutouts
                 tex.filterMode = FilterMode.Bilinear;
                 var s = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height),
@@ -104,6 +111,85 @@ namespace Darkroom
         {
             foreach (var f in files) { var s = LoadExternal(f, ppu); if (s != null) return s; }
             return null;
+        }
+
+        // ---------- WebGL-safe StreamingAssets loading ----------
+        // WebGL has no filesystem (File.*/Directory.* fail) and its network is
+        // async-only, but the sprite getters are synchronous. So on WebGL we PRELOAD
+        // every image listed in manifest.txt into a byte cache at boot (before the
+        // world builds) and decode from it; directory globs read the manifest.
+#if UNITY_WEBGL && !UNITY_EDITOR
+        static readonly Dictionary<string, byte[]> _webBytes = new Dictionary<string, byte[]>();
+        static string[] _webManifest = new string[0];
+
+        /// Parsed manifest (StreamingAssets-relative paths). Empty until preloaded.
+        public static string[] WebManifest => _webManifest;
+
+        /// Boot-time preload (WebGL only): fetch manifest.txt, then every non-music
+        /// file it lists, into the byte cache. Bootstrap yields on this before it
+        /// builds the world, so the synchronous getters find their bytes ready.
+        public static System.Collections.IEnumerator PreloadWebAssets()
+        {
+            string root = Application.streamingAssetsPath;
+            using (var req = UnityEngine.Networking.UnityWebRequest.Get(root + "/manifest.txt"))
+            {
+                yield return req.SendWebRequest();
+                if (req.result == UnityEngine.Networking.UnityWebRequest.Result.Success)
+                    _webManifest = ParseManifest(req.downloadHandler.text);
+            }
+            foreach (var rel in _webManifest)
+            {
+                if (rel.StartsWith("music/")) continue; // audio streams async in AudioDirector
+                using (var req = UnityEngine.Networking.UnityWebRequest.Get(root + "/" + rel.Replace(" ", "%20")))
+                {
+                    yield return req.SendWebRequest();
+                    if (req.result == UnityEngine.Networking.UnityWebRequest.Result.Success)
+                        _webBytes[rel] = req.downloadHandler.data;
+                }
+            }
+        }
+
+        static string[] ParseManifest(string text)
+        {
+            var lines = new List<string>();
+            foreach (var raw in text.Split('\n'))
+            {
+                string s = raw.Trim();
+                if (s.Length == 0 || s[0] == '#') continue;
+                lines.Add(s);
+            }
+            return lines.ToArray();
+        }
+#endif
+
+        /// The StreamingAssets/art files matching `pattern` (e.g. "bd_*.png"), sorted.
+        /// WebGL reads the preloaded manifest; every other platform lists the folder.
+        static List<string> EnumerateArt(string pattern)
+        {
+            var rels = new List<string>();
+#if UNITY_WEBGL && !UNITY_EDITOR
+            int star = pattern.IndexOf('*');
+            string pre = star < 0 ? pattern : pattern.Substring(0, star);
+            string suf = star < 0 ? "" : pattern.Substring(star + 1);
+            foreach (var rel in _webManifest)
+            {
+                if (!rel.StartsWith("art/")) continue;
+                string fn = rel.Substring(4);
+                if (fn.Length >= pre.Length + suf.Length && fn.StartsWith(pre) && fn.EndsWith(suf))
+                    rels.Add(rel);
+            }
+#else
+            try
+            {
+                string dir = System.IO.Path.Combine(Application.streamingAssetsPath, "art");
+                if (System.IO.Directory.Exists(dir))
+                    foreach (var f in System.IO.Directory.GetFiles(dir, pattern))
+                        rels.Add("art/" + System.IO.Path.GetFileName(f));
+            }
+            catch { /* StreamingAssets not a real dir here — fall back to none */ }
+#endif
+            rels.Sort(System.StringComparer.Ordinal); // deterministic order
+            return rels;
         }
 
         /// Concrete: cool dark authored wall (art/wall_concrete.png), legacy photo,
@@ -158,22 +244,7 @@ namespace Darkroom
         public static List<Sprite> BackdropScenes(float ppu)
         {
             if (_scenes != null) return _scenes;
-            _scenes = new List<Sprite>();
-            try
-            {
-                string dir = System.IO.Path.Combine(Application.streamingAssetsPath, "art");
-                if (System.IO.Directory.Exists(dir))
-                {
-                    var files = System.IO.Directory.GetFiles(dir, "bd_*.png");
-                    System.Array.Sort(files); // deterministic order
-                    foreach (var f in files)
-                    {
-                        var s = LoadExternal("art/" + System.IO.Path.GetFileName(f), ppu);
-                        if (s != null) _scenes.Add(s);
-                    }
-                }
-            }
-            catch { /* StreamingAssets not a real dir on some platforms — fall back to none */ }
+            _scenes = GlobArt("bd_*.png", ppu, new Vector2(0.5f, 0.5f));
             return _scenes;
         }
 
@@ -186,22 +257,7 @@ namespace Darkroom
         public static List<Sprite> MidgroundClutter(float ppu)
         {
             if (_midClutter != null) return _midClutter;
-            _midClutter = new List<Sprite>();
-            try
-            {
-                string dir = System.IO.Path.Combine(Application.streamingAssetsPath, "art");
-                if (System.IO.Directory.Exists(dir))
-                {
-                    var files = System.IO.Directory.GetFiles(dir, "mid_*.png");
-                    System.Array.Sort(files);
-                    foreach (var f in files)
-                    {
-                        var s = LoadExternal("art/" + System.IO.Path.GetFileName(f), ppu, new Vector2(0.5f, 1f));
-                        if (s != null) _midClutter.Add(s);
-                    }
-                }
-            }
-            catch { /* fall back to code silhouettes */ }
+            _midClutter = GlobArt("mid_*.png", ppu, new Vector2(0.5f, 1f));
             return _midClutter;
         }
 
@@ -251,21 +307,11 @@ namespace Darkroom
         static List<Sprite> GlobArt(string pattern, float ppu, Vector2 pivot)
         {
             var list = new List<Sprite>();
-            try
+            foreach (var rel in EnumerateArt(pattern))
             {
-                string dir = System.IO.Path.Combine(Application.streamingAssetsPath, "art");
-                if (System.IO.Directory.Exists(dir))
-                {
-                    var files = System.IO.Directory.GetFiles(dir, pattern);
-                    System.Array.Sort(files); // deterministic order
-                    foreach (var f in files)
-                    {
-                        var s = LoadExternal("art/" + System.IO.Path.GetFileName(f), ppu, pivot);
-                        if (s != null) list.Add(s);
-                    }
-                }
+                var s = LoadExternal(rel, ppu, pivot);
+                if (s != null) list.Add(s);
             }
-            catch { /* StreamingAssets not a real dir on some platforms — fall back to none */ }
             return list;
         }
 

@@ -1,0 +1,32 @@
+# StreamingAssets manifest — WebGL has no filesystem and cannot list directories,
+# so the runtime loaders read this list instead of Directory.GetFiles.
+# One StreamingAssets-relative path per line. Regenerate via menu:
+#   Darkroom ▸ Regenerate StreamingAssets Manifest
+art/bd_chem_shelf.png
+art/bd_cornell.png
+art/bd_drying_line.png
+art/bd_engraving.png
+art/bd_enlarger_row.png
+art/bd_jeffcoat.png
+art/bd_safelight_corner.png
+art/bd_sellwood.png
+art/bd_wet_bench.png
+art/bd_window_shaft.png
+art/char_watcher.png
+art/char_worker.png
+art/mid_cables.png
+art/mid_clock.png
+art/mid_drying_negatives.png
+art/mid_drying_prints.png
+art/mid_pipes.png
+art/mid_reels.png
+art/mid_safelight.png
+art/mid_shelf.png
+art/mid_tongs_rack.png
+art/mid_vent.png
+art/wall_concrete.png
+art/wall_panel.png
+art/wall_plaster.png
+bricks.jpg
+concrete.jpg
+music/Darkroom Flicker.mp3

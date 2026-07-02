@@ -532,6 +532,23 @@ namespace Darkroom
         /// external art uses. The track is the melody over the evolving bed.
         System.Collections.IEnumerator LoadMusic()
         {
+            string uri, name;
+            AudioType type;
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // WebGL can't list the folder — pick the first music/* track from the manifest
+            string rel = null;
+            foreach (var m in PixelArt.WebManifest)
+            {
+                if (!m.StartsWith("music/")) continue;
+                string e = System.IO.Path.GetExtension(m).ToLowerInvariant();
+                if (e == ".ogg" || e == ".wav" || e == ".mp3") { rel = m; break; }
+            }
+            if (rel == null) yield break;
+            string mext = System.IO.Path.GetExtension(rel).ToLowerInvariant();
+            type = mext == ".ogg" ? AudioType.OGGVORBIS : mext == ".mp3" ? AudioType.MPEG : AudioType.WAV;
+            uri = Application.streamingAssetsPath + "/" + rel.Replace(" ", "%20");
+            name = System.IO.Path.GetFileNameWithoutExtension(rel);
+#else
             string dir = System.IO.Path.Combine(Application.streamingAssetsPath, "music");
             if (!System.IO.Directory.Exists(dir)) yield break;
 
@@ -545,11 +562,13 @@ namespace Darkroom
             }
             if (file == null) yield break;
 
-            AudioType type = file.EndsWith(".ogg", System.StringComparison.OrdinalIgnoreCase) ? AudioType.OGGVORBIS
-                           : file.EndsWith(".mp3", System.StringComparison.OrdinalIgnoreCase) ? AudioType.MPEG
-                           : AudioType.WAV;
+            type = file.EndsWith(".ogg", System.StringComparison.OrdinalIgnoreCase) ? AudioType.OGGVORBIS
+                 : file.EndsWith(".mp3", System.StringComparison.OrdinalIgnoreCase) ? AudioType.MPEG
+                 : AudioType.WAV;
             // new System.Uri(...).AbsoluteUri encodes the space in "The Darkroom"
-            string uri = new System.Uri(file).AbsoluteUri;
+            uri = new System.Uri(file).AbsoluteUri;
+            name = System.IO.Path.GetFileNameWithoutExtension(file);
+#endif
             using (var req = UnityWebRequestMultimedia.GetAudioClip(uri, type))
             {
                 yield return req.SendWebRequest();
@@ -560,7 +579,7 @@ namespace Darkroom
                 }
                 var clip = DownloadHandlerAudioClip.GetContent(req);
                 if (clip == null) yield break;
-                clip.name = System.IO.Path.GetFileNameWithoutExtension(file);
+                clip.name = name;
                 _music.clip = clip;
                 _music.loop = true;
                 _music.Play();
